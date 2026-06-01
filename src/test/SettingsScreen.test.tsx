@@ -28,9 +28,26 @@ const mockSetServers = vi.fn((servers: BlossomServer[]) => {
 })
 
 vi.mock('../stores/blossomStore', () => ({
+  DEFAULT_BLOSSOM_SERVERS: [
+    'https://blossom.primal.net',
+    'https://blossom.band',
+    'https://cdn.satellite.earth',
+  ],
   useBlossomStore: (
     sel: (s: { servers: BlossomServer[]; setServers: (s: BlossomServer[]) => void }) => unknown,
   ) => sel({ servers: mockServers, setServers: mockSetServers }),
+}))
+
+vi.mock('../stores/relayStore', () => ({
+  DEFAULT_RELAYS: [
+    'wss://relay.damus.io',
+    'wss://relay.primal.net',
+    'wss://nos.lol',
+    'wss://relay.nostr.band',
+    'wss://purplepag.es',
+  ],
+  useRelayStore: (sel: (s: { relays: string[]; activeRelays: () => string[] }) => unknown) =>
+    sel({ relays: [], activeRelays: () => ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band', 'wss://purplepag.es'] }),
 }))
 
 function Wrapper({ children }: { children: React.ReactNode }) {

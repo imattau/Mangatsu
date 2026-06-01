@@ -13,6 +13,8 @@ import { NostrConnectSigner } from 'applesauce-signers'
 import { ExtensionAccount, PrivateKeyAccount } from 'applesauce-accounts/accounts'
 import { NostrService } from '@/services/NostrService'
 import { useAuthStore, type AuthMethod } from '@/stores/authStore'
+import { useRelayStore } from '@/stores/relayStore'
+import { useBlossomStore } from '@/stores/blossomStore'
 
 const NSEC_SESSION_KEY = 'mangatsu:nsec'
 
@@ -143,6 +145,16 @@ export function NostrProvider({ children }: PropsWithChildren) {
     return () => {
       sub.unsubscribe()
     }
+  }, [pubkey, service])
+
+  useEffect(() => {
+    if (!pubkey) return
+    const sub = service.subscribeToUserLists(
+      pubkey,
+      (urls) => useRelayStore.getState().setRelays(urls),
+      (urls) => useBlossomStore.getState().setServers(urls.map((url) => ({ url }))),
+    )
+    return () => sub.unsubscribe()
   }, [pubkey, service])
 
   return (

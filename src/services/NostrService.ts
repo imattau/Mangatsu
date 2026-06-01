@@ -4,12 +4,7 @@ import { RelayPool } from 'applesauce-relay'
 import { AccountManager } from 'applesauce-accounts'
 import { EventFactory } from 'applesauce-factory'
 import type { Subscription } from 'rxjs'
-
-const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://nos.lol',
-]
+import { useRelayStore, DEFAULT_RELAYS } from '@/stores/relayStore'
 
 export class NostrService {
   eventStore = new EventStore()
@@ -17,8 +12,14 @@ export class NostrService {
   accountManager = new AccountManager()
   eventFactory = new EventFactory()
 
-  async connect(relays: string[] = DEFAULT_RELAYS) {
-    for (const url of relays) {
+  private getRelays(): string[] {
+    const { relays } = useRelayStore.getState()
+    return relays.length > 0 ? relays : DEFAULT_RELAYS
+  }
+
+  async connect(relays?: string[]) {
+    const urls = relays ?? this.getRelays()
+    for (const url of urls) {
       this.relayPool.relay(url)
     }
   }
@@ -38,7 +39,7 @@ export class NostrService {
     onEvent?: (event: NostrEvent) => void,
   ): Subscription {
     const source$ = this.relayPool.subscription(
-      DEFAULT_RELAYS,
+      this.getRelays(),
       [{ kinds: [30402], authors: [pubkey] }],
       { eventStore: this.eventStore },
     )
@@ -56,7 +57,7 @@ export class NostrService {
     onEvent?: (event: NostrEvent) => void,
   ): Subscription {
     const source$ = this.relayPool.subscription(
-      DEFAULT_RELAYS,
+      this.getRelays(),
       [{ kinds: [30403], '#d': [`${comicDTag}/`] }],
       { eventStore: this.eventStore },
     )
@@ -71,7 +72,7 @@ export class NostrService {
 
   subscribeToGlobalComics(onEvent?: (event: NostrEvent) => void): Subscription {
     const source$ = this.relayPool.subscription(
-      DEFAULT_RELAYS,
+      this.getRelays(),
       [{ kinds: [30402], limit: 50 }],
       { eventStore: this.eventStore },
     )
@@ -88,7 +89,7 @@ export class NostrService {
     onEvent?: (event: NostrEvent) => void,
   ): Subscription {
     const source$ = this.relayPool.subscription(
-      DEFAULT_RELAYS,
+      this.getRelays(),
       [{ kinds: [3], authors: [pubkey], limit: 1 }],
       { eventStore: this.eventStore },
     )
@@ -108,7 +109,7 @@ export class NostrService {
       return { unsubscribe: () => {} } as Subscription
     }
     const source$ = this.relayPool.subscription(
-      DEFAULT_RELAYS,
+      this.getRelays(),
       [{ kinds: [30402], authors, limit: 50 }],
       { eventStore: this.eventStore },
     )
@@ -126,7 +127,7 @@ export class NostrService {
     onEvent?: (event: NostrEvent) => void,
   ): Subscription {
     const source$ = this.relayPool.subscription(
-      DEFAULT_RELAYS,
+      this.getRelays(),
       [{ kinds: [30402], authors: [pubkey], '#d': [dTag] }],
       { eventStore: this.eventStore },
     )
@@ -138,8 +139,39 @@ export class NostrService {
     })
   }
 
+  subscribeToUserLists(
+    pubkey: string,
+    onRelays: (urls: string[]) => void,
+    onBlossomServers: (urls: string[]) => void,
+  ): { unsubscribe: () => void } {
+    const source$ = this.relayPool.subscription(
+      this.getRelays(),
+      [{ kinds: [10002, 10063], authors: [pubkey] }],
+      { eventStore: this.eventStore },
+    )
+
+    const sub = source$.subscribe({
+      next: (event) => {
+        this.eventStore.add(event)
+        if (event.kind === 10002) {
+          const urls = event.tags
+            .filter((t) => t[0] === 'r' && typeof t[1] === 'string')
+            .map((t) => t[1])
+          if (urls.length > 0) onRelays(urls)
+        } else if (event.kind === 10063) {
+          const urls = event.tags
+            .filter((t) => t[0] === 'server' && typeof t[1] === 'string')
+            .map((t) => t[1])
+          if (urls.length > 0) onBlossomServers(urls)
+        }
+      },
+    })
+
+    return { unsubscribe: () => sub.unsubscribe() }
+  }
+
   async publishEvent(event: NostrEvent): Promise<void> {
-    await this.relayPool.publish(DEFAULT_RELAYS, event)
+    await this.relayPool.publish(this.getRelays(), event)
   }
 }
 

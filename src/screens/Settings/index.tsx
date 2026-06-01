@@ -1,13 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
-import { useBlossomStore } from '@/stores/blossomStore'
-
-const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://nos.lol',
-]
+import { useBlossomStore, DEFAULT_BLOSSOM_SERVERS } from '@/stores/blossomStore'
+import { useRelayStore } from '@/stores/relayStore'
 
 function truncatePubkey(pubkey: string) {
   if (pubkey.length <= 16) return pubkey
@@ -20,7 +15,11 @@ export function SettingsScreen() {
   const clearAuth = useAuthStore((state) => state.clearAuth)
   const servers = useBlossomStore((state) => state.servers)
   const setServers = useBlossomStore((state) => state.setServers)
+  const activeRelays = useRelayStore((state) => state.activeRelays)
+  const userRelays = useRelayStore((state) => state.relays)
   const [newUrl, setNewUrl] = useState('')
+  const displayRelays = activeRelays()
+  const usingDefaultRelays = userRelays.length === 0
 
   function handleSignOut() {
     clearAuth()
@@ -82,31 +81,50 @@ export function SettingsScreen() {
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
           <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">Blossom Servers</p>
           <ul className="mb-4 space-y-2">
-            {servers.length === 0 && (
-              <li className="text-sm text-zinc-500">No servers configured</li>
-            )}
-            {servers.map((server, i) => (
-              <li
-                key={server.url}
-                className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3"
-              >
-                <div className="min-w-0">
-                  {i === 0 && (
-                    <span className="mb-1 block text-[0.6rem] uppercase tracking-widest text-zinc-500">
-                      Primary
-                    </span>
-                  )}
-                  <p className="truncate text-sm text-zinc-100">{server.url}</p>
-                </div>
-                <button
-                  onClick={() => handleRemoveServer(server.url)}
-                  aria-label={`Remove ${server.url}`}
-                  className="flex-shrink-0 rounded-full border border-zinc-800 px-2.5 py-1 text-sm text-zinc-500 transition hover:border-red-800 hover:text-red-400"
+            {servers.length === 0 ? (
+              <>
+                <li className="mb-1 text-xs text-zinc-600">No servers configured — using defaults (kind 10063)</li>
+                {DEFAULT_BLOSSOM_SERVERS.map((url, i) => (
+                  <li
+                    key={url}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/50 px-4 py-3 opacity-50"
+                  >
+                    <div className="min-w-0">
+                      {i === 0 && (
+                        <span className="mb-1 block text-[0.6rem] uppercase tracking-widest text-zinc-500">
+                          Primary (default)
+                        </span>
+                      )}
+                      <p className="truncate text-sm text-zinc-400">{url}</p>
+                    </div>
+                    <span className="flex-shrink-0 text-xs text-zinc-600">(default)</span>
+                  </li>
+                ))}
+              </>
+            ) : (
+              servers.map((server, i) => (
+                <li
+                  key={server.url}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3"
                 >
-                  ×
-                </button>
-              </li>
-            ))}
+                  <div className="min-w-0">
+                    {i === 0 && (
+                      <span className="mb-1 block text-[0.6rem] uppercase tracking-widest text-zinc-500">
+                        Primary
+                      </span>
+                    )}
+                    <p className="truncate text-sm text-zinc-100">{server.url}</p>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveServer(server.url)}
+                    aria-label={`Remove ${server.url}`}
+                    className="flex-shrink-0 rounded-full border border-zinc-800 px-2.5 py-1 text-sm text-zinc-500 transition hover:border-red-800 hover:text-red-400"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))
+            )}
           </ul>
           <div className="flex gap-2">
             <input
@@ -129,9 +147,13 @@ export function SettingsScreen() {
         {/* Relays */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
           <p className="mb-1 text-xs uppercase tracking-[0.35em] text-zinc-500">Relays</p>
-          <p className="mb-4 text-xs text-zinc-600">Default relays (read-only)</p>
+          <p className="mb-4 text-xs text-zinc-600">
+            {usingDefaultRelays
+              ? 'Default relays (defaults) — sign in to load your kind 10002 list'
+              : 'Relays from your kind 10002 list'}
+          </p>
           <ul className="space-y-2">
-            {DEFAULT_RELAYS.map((relay) => (
+            {displayRelays.map((relay) => (
               <li
                 key={relay}
                 className="rounded-xl border border-zinc-800 px-4 py-3 font-mono text-sm text-zinc-400"
