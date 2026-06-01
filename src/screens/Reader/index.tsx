@@ -1,3 +1,158 @@
+import { useMemo, useState, useCallback } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { useComicStore } from '@/stores/comicStore'
+import { useReadStore } from '@/stores/readStore'
+import { useBlossomStore } from '@/stores/blossomStore'
+import { usePageObserver } from './usePageObserver'
+import { useProgressPublisher } from './useProgressPublisher'
+
+function resolvePageUrl(hash: string, server: string): string {
+  return `${server.replace(/\/$/, '')}/blob/${hash}`
+}
+
+function chapterNumber(dTag: string): number {
+  const match = dTag.match(/(\d+(?:\.\d+)?)$/)
+  return match ? parseFloat(match[1]) : 0
+}
+
 export function ReaderScreen() {
-  return <div className="p-4"><h1 className="text-2xl font-bold">Reader</h1></div>
+  const { dTag, chapterId } = useParams<{ dTag: string; chapterId: string }>()
+  const chapterDTag = chapterId ? decodeURIComponent(chapterId) : ''
+
+  const chaptersForComic = useComicStore((s) => s.chaptersForComic)
+  const primaryServer = useBlossomStore((s) => s.primaryServer)
+  const setProgress = useReadStore((s) => s.setProgress)
+
+  const allChapters = useMemo(
+    () =>
+      dTag
+        ? chaptersForComic(dTag)
+            .slice()
+            .sort((a, b) => chapterNumber(a.dTag) - chapterNumber(b.dTag))
+        : [],
+    [chaptersForComic, dTag],
+  )
+
+  const chapter = allChapters.find((c) => c.dTag === chapterDTag)
+  const chapterIndex = allChapters.findIndex((c) => c.dTag === chapterDTag)
+  const prevChapter = chapterIndex > 0 ? allChapters[chapterIndex - 1] : null
+  const nextChapter =
+    chapterIndex >= 0 && chapterIndex < allChapters.length - 1
+      ? allChapters[chapterIndex + 1]
+      : null
+
+  const server = chapter?.blossomServer || primaryServer() || ''
+  const pageUrls = useMemo(
+    () => (chapter ? chapter.pageHashes.map((h) => resolvePageUrl(h, server)) : []),
+    [chapter, server],
+  )
+
+  const [currentPage, setCurrentPage] = useState(1)
+
+  // One ref per page — stable across renders (keyed by pageUrls.length)
+  const pageRefs = useMemo(
+    () => pageUrls.map(() => ({ current: null }) as React.RefObject<HTMLImageElement | null>),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pageUrls.length],
+  )
+
+  const handleVisible = useCallback(
+    (idx: number) => {
+      const page = idx + 1
+      setCurrentPage(page)
+      if (!chapterDTag) return
+      setProgress({
+        id: chapterDTag,
+        chapterDTag,
+        page,
+        updatedAt: Date.now(),
+      })
+    },
+    [chapterDTag, setProgress],
+  )
+
+  usePageObserver(pageRefs, handleVisible)
+  useProgressPublisher(chapterDTag, currentPage)
+
+  if (!chapter) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
+        <div className="text-center">
+          <p className="text-lg font-medium text-zinc-100">Chapter not found</p>
+          {dTag && (
+            <Link
+              to={`/comic/${dTag}`}
+              className="mt-4 inline-block text-sm text-indigo-400 hover:text-indigo-300"
+            >
+              ← Back to comic
+            </Link>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      {/* Header */}
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur">
+        <Link
+          to={`/comic/${dTag}`}
+          className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
+        >
+          ← Back
+        </Link>
+        <div className="flex-1 min-w-0 text-center">
+          <p className="truncate text-sm font-medium">{chapter.title}</p>
+        </div>
+        <PageCounter current={currentPage} total={pageUrls.length} />
+      </header>
+
+      {/* Pages */}
+      <main className="mx-auto max-w-2xl">
+        {pageUrls.map((url, idx) => (
+          <img
+            key={url}
+            ref={(el) => { pageRefs[idx].current = el }}
+            src={url}
+            alt={`Page ${idx + 1}`}
+            className="block w-full"
+            loading={idx === 0 ? 'eager' : 'lazy'}
+          />
+        ))}
+      </main>
+
+      {/* Chapter navigation */}
+      <nav className="flex items-center justify-between border-t border-zinc-800 px-4 py-6">
+        {prevChapter ? (
+          <Link
+            to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}`}
+            className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
+          >
+            ← Prev
+          </Link>
+        ) : (
+          <span />
+        )}
+        {nextChapter ? (
+          <Link
+            to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}`}
+            className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
+          >
+            Next →
+          </Link>
+        ) : (
+          <span />
+        )}
+      </nav>
+    </div>
+  )
+}
+
+function PageCounter({ current, total }: { current: number; total: number }) {
+  return (
+    <span className="flex-shrink-0 rounded-full bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400">
+      {current} / {total}
+    </span>
+  )
 }
