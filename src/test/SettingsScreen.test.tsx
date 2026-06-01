@@ -38,6 +38,12 @@ vi.mock('../stores/blossomStore', () => ({
   ) => sel({ servers: mockServers, setServers: mockSetServers }),
 }))
 
+const mockPublishBlossomServerList = vi.fn().mockResolvedValue(undefined)
+
+vi.mock('../context/NostrContext', () => ({
+  useNostr: () => ({ service: { publishBlossomServerList: mockPublishBlossomServerList } }),
+}))
+
 vi.mock('../stores/relayStore', () => ({
   DEFAULT_RELAYS: [
     'wss://relay.damus.io',
@@ -68,6 +74,7 @@ describe('SettingsScreen', () => {
     mockClearAuth.mockClear()
     mockSetServers.mockClear()
     mockNavigate.mockClear()
+    mockPublishBlossomServerList.mockClear()
   })
 
   it('renders truncated pubkey', () => {
@@ -100,6 +107,22 @@ describe('SettingsScreen', () => {
     const removeBtn = screen.getByLabelText('Remove https://server-a.example')
     fireEvent.click(removeBtn)
     expect(mockSetServers).toHaveBeenCalledWith([{ url: 'https://server-b.example' }])
+  })
+
+  it('publishes kind 10063 when a server is added', () => {
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    const input = screen.getByPlaceholderText('https://blossom.example')
+    fireEvent.change(input, { target: { value: 'https://new.server' } })
+    fireEvent.click(screen.getByText('Add'))
+    expect(mockPublishBlossomServerList).toHaveBeenCalledWith(['https://new.server'])
+  })
+
+  it('publishes kind 10063 when a server is removed', () => {
+    mockServers = [{ url: 'https://server-a.example' }, { url: 'https://server-b.example' }]
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    const removeBtn = screen.getByLabelText('Remove https://server-a.example')
+    fireEvent.click(removeBtn)
+    expect(mockPublishBlossomServerList).toHaveBeenCalledWith(['https://server-b.example'])
   })
 
   it('shows default relays', () => {

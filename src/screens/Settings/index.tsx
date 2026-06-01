@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { useBlossomStore, DEFAULT_BLOSSOM_SERVERS } from '@/stores/blossomStore'
 import { useRelayStore } from '@/stores/relayStore'
+import { useNostr } from '@/context/NostrContext'
 
 function truncatePubkey(pubkey: string) {
   if (pubkey.length <= 16) return pubkey
@@ -17,6 +18,7 @@ export function SettingsScreen() {
   const setServers = useBlossomStore((state) => state.setServers)
   const activeRelays = useRelayStore((state) => state.activeRelays)
   const userRelays = useRelayStore((state) => state.relays)
+  const { service } = useNostr()
   const [newUrl, setNewUrl] = useState('')
   const displayRelays = activeRelays()
   const usingDefaultRelays = userRelays.length === 0
@@ -30,12 +32,16 @@ export function SettingsScreen() {
   function handleAddServer() {
     const url = newUrl.trim()
     if (!url) return
-    setServers([...servers, { url }])
+    const newServers = [...servers, { url }]
+    setServers(newServers)
     setNewUrl('')
+    service.publishBlossomServerList(newServers.map((s) => s.url)).catch(() => {})
   }
 
   function handleRemoveServer(url: string) {
-    setServers(servers.filter((s) => s.url !== url))
+    const newServers = servers.filter((s) => s.url !== url)
+    setServers(newServers)
+    service.publishBlossomServerList(newServers.map((s) => s.url)).catch(() => {})
   }
 
   return (

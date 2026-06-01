@@ -173,6 +173,25 @@ export class NostrService {
   async publishEvent(event: NostrEvent): Promise<void> {
     await this.relayPool.publish(this.getRelays(), event)
   }
+
+  async publishBlossomServerList(serverUrls: string[]): Promise<void> {
+    const account = this.accountManager.active
+    if (!account) return
+
+    const template = {
+      kind: 10063,
+      tags: serverUrls.map((url) => ['server', url]),
+      content: '',
+      created_at: Math.floor(Date.now() / 1000),
+    }
+
+    const signed = await account.signer.signEvent(template)
+    this.eventStore.add(signed)
+    const relays = this.getRelays()
+    await Promise.allSettled(
+      this.relayPool.group(relays).publish(signed)
+    )
+  }
 }
 
 export const nostrService = new NostrService()
