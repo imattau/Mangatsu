@@ -16,9 +16,9 @@ export const useComicStore = create<ComicState>()(
       comics: {},
       chapters: {},
       setComic: (comic) =>
-        set((s) => ({ comics: { ...s.comics, [comic.id]: comic } })),
+        set((s) => ({ comics: { ...s.comics, [comic.dTag]: comic } })),
       setChapter: (chapter) =>
-        set((s) => ({ chapters: { ...s.chapters, [chapter.id]: chapter } })),
+        set((s) => ({ chapters: { ...s.chapters, [chapter.dTag]: chapter } })),
       chaptersForComic: (comicDTag) =>
         Object.values(get().chapters).filter((c) => c.parentDTag === comicDTag),
     }),
