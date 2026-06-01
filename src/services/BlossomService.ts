@@ -3,6 +3,7 @@ export class BlossomService {
     return `${serverUrl}/blob/${hash}`
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async upload(_file: File, _serverUrl: string): Promise<string> {
     throw new Error('Not implemented')
   }

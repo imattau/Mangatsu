@@ -23,7 +23,7 @@ export class NostrService {
 
   async disconnect() {
     for (const [, relay] of this.relayPool.relays) {
-      relay.disconnect()
+      relay.close()
     }
   }
 
