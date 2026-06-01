@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { HeaderNav } from '@/components/HeaderNav'
 import { useEventStore, useObservableState } from 'applesauce-react/hooks'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { of } from 'rxjs'
@@ -134,9 +135,14 @@ export function FeedScreen() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 py-4 text-zinc-100">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <header>
-          <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Feed</h1>
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <HeaderNav />
+            <div>
+              <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight">Feed</h1>
+            </div>
+          </div>
         </header>
 
         {/* Tabs */}

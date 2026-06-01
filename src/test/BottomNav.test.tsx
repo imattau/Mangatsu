@@ -1,19 +1,20 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { BottomNav } from '../components/BottomNav'
+import { HeaderNav } from '../components/HeaderNav'
 
 function Wrapper({ path = '/' }: { path?: string }) {
   return (
     <MemoryRouter initialEntries={[path]}>
-      <BottomNav />
+      <HeaderNav />
     </MemoryRouter>
   )
 }
 
-describe('BottomNav', () => {
+describe('HeaderNav', () => {
   it('renders Library and Feed nav items', () => {
     render(<Wrapper />)
+    // Labels are hidden on mobile but present in DOM
     expect(screen.getByText('Library')).toBeInTheDocument()
     expect(screen.getByText('Feed')).toBeInTheDocument()
   })
