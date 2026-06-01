@@ -155,8 +155,10 @@ export function SettingsScreen() {
           <p className="mb-1 text-xs uppercase tracking-[0.35em] text-zinc-500">Relays</p>
           <p className="mb-4 text-xs text-zinc-600">
             {usingDefaultRelays
-              ? 'Default relays (defaults) — sign in to load your kind 10002 list'
-              : 'Relays from your kind 10002 list'}
+              ? pubkey
+                ? 'Using public defaults — no kind 10002 list found on your relays'
+                : 'Using public defaults — sign in to load your relay list'
+              : 'From your kind 10002 list'}
           </p>
           <ul className="space-y-2">
             {displayRelays.map((relay) => (
