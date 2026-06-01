@@ -116,7 +116,6 @@ export function LibraryScreen() {
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <HeaderNav />
             <div>
               <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight">Library</h1>
@@ -124,6 +123,7 @@ export function LibraryScreen() {
           </div>
 
           <div className="flex items-center gap-3">
+            <HeaderNav />
             <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs text-zinc-400">
               {onlineCount > 0 ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
             </div>

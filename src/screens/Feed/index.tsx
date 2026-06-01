@@ -137,11 +137,14 @@ export function FeedScreen() {
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <HeaderNav />
             <div>
               <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
               <h1 className="mt-2 text-2xl font-semibold tracking-tight">Feed</h1>
             </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <HeaderNav />
           </div>
         </header>
 
