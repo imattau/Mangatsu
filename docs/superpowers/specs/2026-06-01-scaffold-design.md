@@ -12,7 +12,7 @@
 | Routing | React Router v6 (`createBrowserRouter`) |
 | State | Zustand with `persist` middleware → `localStorage` |
 | Testing | Vitest + React Testing Library |
-| Nostr | `@applesauce/core`, `relay`, `accounts`, `signers`, `factory`, `loaders` |
+| Nostr | `applesauce-core`, `applesauce-relay`, `applesauce-accounts`, `applesauce-signers`, `applesauce-factory`, `applesauce-loaders`, `applesauce-react` |
 | Blossom | `blossom-client-sdk` |
 
 ## Folder Structure
