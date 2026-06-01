@@ -1,0 +1,4 @@
+[mcp_servers.typegraph]
+command = "/home/mattthomson/workspace/Mangatsu/plugins/typegraph-mcp/node_modules/.bin/tsx"
+args = ["/home/mattthomson/workspace/Mangatsu/plugins/typegraph-mcp/server.ts"]
+env = { TYPEGRAPH_PROJECT_ROOT = "/home/mattthomson/workspace/Mangatsu", TYPEGRAPH_TSCONFIG = "/home/mattthomson/workspace/Mangatsu/tsconfig.json" }

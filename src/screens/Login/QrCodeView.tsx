@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useState } from 'react'
-import QRCode from 'react-qr-code'
+import { QRCode } from 'react-qr-code'
 import { NostrConnectAccount } from 'applesauce-accounts/accounts'
 import { NostrConnectSigner, PrivateKeySigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
