@@ -151,7 +151,10 @@ export function NostrProvider({ children }: PropsWithChildren) {
     if (!pubkey) return
     const sub = service.subscribeToUserLists(
       pubkey,
-      (urls) => useRelayStore.getState().setRelays(urls),
+      (urls) => {
+        useRelayStore.getState().setRelays(urls)
+        service.connect(urls)
+      },
       (urls) => useBlossomStore.getState().setServers(urls.map((url) => ({ url }))),
     )
     return () => sub.unsubscribe()
