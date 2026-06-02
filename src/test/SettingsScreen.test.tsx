@@ -130,6 +130,6 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('wss://relay.damus.io')).toBeInTheDocument()
     expect(screen.getByText('wss://relay.primal.net')).toBeInTheDocument()
     expect(screen.getByText('wss://nos.lol')).toBeInTheDocument()
-    expect(screen.getByText(/default relays/i)).toBeInTheDocument()
+    expect(screen.getByText(/using public defaults/i)).toBeInTheDocument()
   })
 })
