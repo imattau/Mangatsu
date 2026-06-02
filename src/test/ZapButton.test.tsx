@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ZapButton } from '../components/ZapButton'
 
@@ -15,18 +15,42 @@ vi.mock('../context/NostrContext', () => ({
   useNostr: () => ({ service: { fetchProfile: mockFetchProfile } }),
 }))
 
+const mockPayInvoice = vi.fn().mockResolvedValue(undefined)
 vi.mock('@nostr-dev-kit/ndk', () => ({
-  default: vi.fn().mockImplementation(() => ({})),
-  NDKNwc: vi.fn().mockImplementation(() => ({
-    blockUntilReady: vi.fn().mockResolvedValue(undefined),
-    payInvoice: vi.fn().mockResolvedValue(undefined),
-  })),
+  default: function MockNDK() { return {} },
+  NDKNwc: function MockNDKNwc() {
+    return {
+      blockUntilReady: vi.fn().mockResolvedValue(undefined),
+      payInvoice: mockPayInvoice,
+    }
+  },
+}))
+
+// Mock fetch for LNURL flow
+const mockFetch = vi.fn()
+vi.stubGlobal('fetch', mockFetch)
+
+// Mock light-bolt11-decoder to return a valid amount matching 21 sats = 21000 msat
+vi.mock('light-bolt11-decoder', () => ({
+  decode: vi.fn().mockReturnValue({
+    sections: [{ name: 'amount', value: 21000 }],
+  }),
 }))
 
 describe('ZapButton', () => {
   beforeEach(() => {
     mockConnectionString = null
     mockFetchProfile.mockClear()
+    mockPayInvoice.mockClear()
+    mockFetch.mockReset()
+    // Default fetch: lnurl metadata then invoice
+    mockFetch
+      .mockResolvedValueOnce({
+        json: () => Promise.resolve({ callback: 'https://example.com/lnurlp/callback' }),
+      })
+      .mockResolvedValueOnce({
+        json: () => Promise.resolve({ pr: 'lnbc210n1...' }),
+      })
   })
 
   it('renders the zap button', () => {
@@ -49,5 +73,53 @@ describe('ZapButton', () => {
     render(<ZapButton authorPubkey="abc123" />)
     fireEvent.click(screen.getByLabelText('Zap'))
     expect(screen.getByText(/Connect a Lightning wallet/i)).toBeInTheDocument()
+  })
+
+  it('shows confirmation dialog before paying', async () => {
+    mockConnectionString = 'nostr+walletconnect://pubkey?relay=wss://relay.example&secret=abc'
+    render(<ZapButton authorPubkey="abc123" />)
+    fireEvent.click(screen.getByLabelText('Zap'))
+    fireEvent.click(screen.getByText(/Zap 21 sats/i))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Confirm Payment/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/21 sats/i)).toBeInTheDocument()
+    expect(mockPayInvoice).not.toHaveBeenCalled()
+  })
+
+  it('pays invoice after user confirms', async () => {
+    mockConnectionString = 'nostr+walletconnect://pubkey?relay=wss://relay.example&secret=abc'
+    render(<ZapButton authorPubkey="abc123" />)
+    fireEvent.click(screen.getByLabelText('Zap'))
+    fireEvent.click(screen.getByText(/Zap 21 sats/i))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Confirm Payment/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('Confirm ⚡'))
+
+    await waitFor(() => {
+      expect(mockPayInvoice).toHaveBeenCalledWith('lnbc210n1...')
+    })
+  })
+
+  it('cancels payment when user cancels confirmation', async () => {
+    mockConnectionString = 'nostr+walletconnect://pubkey?relay=wss://relay.example&secret=abc'
+    render(<ZapButton authorPubkey="abc123" />)
+    fireEvent.click(screen.getByLabelText('Zap'))
+    fireEvent.click(screen.getByText(/Zap 21 sats/i))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Confirm Payment/i)).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('Cancel'))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Zap 21 sats/i)).toBeInTheDocument()
+    })
+    expect(mockPayInvoice).not.toHaveBeenCalled()
   })
 })

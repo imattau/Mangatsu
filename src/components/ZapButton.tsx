@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import NDK, { NDKNwc } from '@nostr-dev-kit/ndk'
+import { decode } from 'light-bolt11-decoder'
 import { useNwcStore } from '@/stores/nwcStore'
 import { useNostr } from '@/context/NostrContext'
 
@@ -9,18 +10,69 @@ interface ZapButtonProps {
 
 const PRESET_AMOUNTS = [21, 100, 500, 1000]
 
-async function zapWithNwc(connectionString: string, lud16: string, amountSats: number) {
+function validateLud16(lud16: string): { user: string; domain: string } | null {
+  const lower = lud16.toLowerCase()
+  if (!/^[a-z0-9._+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(lower)) return null
+  const [user, domain] = lower.split('@')
+  return { user, domain }
+}
+
+function validateCallback(callback: string, expectedDomain: string): boolean {
+  try {
+    const url = new URL(callback)
+    return url.protocol === 'https:' && url.hostname === expectedDomain
+  } catch {
+    return false
+  }
+}
+
+async function fetchInvoice(
+  connectionString: string,
+  lud16: string,
+  amountSats: number,
+): Promise<{ nwc: NDKNwc; invoice: string; amountSats: number }> {
+  // Validate amount
+  const parsed = parseInt(String(amountSats), 10)
+  if (isNaN(parsed) || parsed <= 0 || parsed > 1_000_000) {
+    throw new Error('Invalid amount')
+  }
+
+  // Validate lud16
+  const addr = validateLud16(lud16)
+  if (!addr) {
+    throw new Error('Invalid Lightning address format')
+  }
+  const { user, domain } = addr
+
   const ndk = new NDK()
   const nwc = new NDKNwc({ ndk, pairingCode: connectionString })
   await nwc.blockUntilReady()
 
-  const [user, domain] = lud16.split('@')
-  const lnurlRes = await fetch(`https://${domain}/.well-known/lnurlp/${user}`)
+  const lnurlRes = await fetch(
+    `https://${domain}/.well-known/lnurlp/${encodeURIComponent(user)}`,
+  )
   const lnurlData = (await lnurlRes.json()) as { callback: string }
-  const invoiceRes = await fetch(`${lnurlData.callback}?amount=${amountSats * 1000}`)
+
+  // Validate callback hostname matches lud16 domain
+  if (!validateCallback(lnurlData.callback, domain)) {
+    throw new Error('LNURL callback domain mismatch — possible redirect attack')
+  }
+
+  const invoiceRes = await fetch(`${lnurlData.callback}?amount=${parsed * 1000}`)
   const { pr: invoice } = (await invoiceRes.json()) as { pr: string }
 
-  await nwc.payInvoice(invoice)
+  // Verify invoice amount matches what we requested
+  const decoded = decode(invoice)
+  const invoiceAmountMsat = decoded.sections.find(
+    (s: { name: string }) => s.name === 'amount',
+  )?.value as number | undefined
+  if (!invoiceAmountMsat || invoiceAmountMsat !== parsed * 1000) {
+    throw new Error(
+      `Invoice amount mismatch: expected ${parsed * 1000} msat, got ${invoiceAmountMsat}`,
+    )
+  }
+
+  return { nwc, invoice, amountSats: parsed }
 }
 
 export function ZapButton({ authorPubkey }: ZapButtonProps) {
@@ -29,8 +81,13 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
   const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState(21)
   const [customAmount, setCustomAmount] = useState('')
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'loading' | 'confirming' | 'paying' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [pendingInvoice, setPendingInvoice] = useState<{
+    nwc: NDKNwc
+    pr: string
+    amountSats: number
+  } | null>(null)
 
   async function handleZap() {
     if (!connectionString) {
@@ -49,7 +106,26 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
         return
       }
       const finalAmount = customAmount ? parseInt(customAmount, 10) : amount
-      await zapWithNwc(connectionString, lud16 ?? lud06!, finalAmount)
+      const { nwc, invoice, amountSats } = await fetchInvoice(
+        connectionString,
+        lud16 ?? lud06!,
+        finalAmount,
+      )
+      // Show confirmation before paying
+      setPendingInvoice({ nwc, pr: invoice, amountSats })
+      setStatus('confirming')
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'Payment failed')
+      setStatus('error')
+    }
+  }
+
+  async function handleConfirmPay() {
+    if (!pendingInvoice) return
+    setStatus('paying')
+    try {
+      await pendingInvoice.nwc.payInvoice(pendingInvoice.pr)
+      setPendingInvoice(null)
       setStatus('success')
       setTimeout(() => {
         setOpen(false)
@@ -59,6 +135,11 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
       setErrorMsg(err instanceof Error ? err.message : 'Payment failed')
       setStatus('error')
     }
+  }
+
+  function handleCancelPay() {
+    setPendingInvoice(null)
+    setStatus('idle')
   }
 
   if (!open) {
@@ -95,6 +176,32 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
         <button onClick={() => setOpen(false)} className="mt-2 text-xs text-zinc-600 hover:text-zinc-400">
           Cancel
         </button>
+      </div>
+    )
+  }
+
+  // Payment confirmation dialog
+  if (status === 'confirming' && pendingInvoice) {
+    return (
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-3">
+        <p className="text-xs uppercase tracking-widest text-zinc-500">Confirm Payment</p>
+        <p className="text-sm text-zinc-300">
+          Pay <span className="font-semibold text-yellow-400">{pendingInvoice.amountSats} sats</span> via Lightning?
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleCancelPay}
+            className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => void handleConfirmPay()}
+            className="flex-1 rounded-full bg-yellow-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-yellow-400"
+          >
+            Confirm ⚡
+          </button>
+        </div>
       </div>
     )
   }
@@ -138,10 +245,10 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
         </button>
         <button
           onClick={() => void handleZap()}
-          disabled={status === 'loading'}
+          disabled={status === 'loading' || status === 'paying'}
           className="flex-1 rounded-full bg-yellow-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-yellow-400 disabled:opacity-50"
         >
-          {status === 'loading' ? 'Paying…' : `Zap ${customAmount || amount} sats ⚡`}
+          {status === 'loading' ? 'Preparing…' : status === 'paying' ? 'Paying…' : `Zap ${customAmount || amount} sats ⚡`}
         </button>
       </div>
     </div>
