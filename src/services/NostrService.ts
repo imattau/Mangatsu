@@ -1,6 +1,7 @@
 import { EventStore } from 'applesauce-core'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { RelayPool } from 'applesauce-relay'
+import type { PublishResponse } from 'applesauce-relay'
 import { AccountManager } from 'applesauce-accounts'
 import { EventFactory } from 'applesauce-factory'
 import type { Subscription } from 'rxjs'
@@ -25,8 +26,8 @@ export class NostrService {
   }
 
   async disconnect() {
-    for (const [, relay] of this.relayPool.relays) {
-      relay.close()
+    for (const relay of Array.from(this.relayPool.relays.values())) {
+      this.relayPool.remove(relay, true)
     }
   }
 
@@ -40,7 +41,7 @@ export class NostrService {
   ): Subscription {
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30402], authors: [pubkey] }],
+      [{ kinds: [30040], authors: [pubkey] }],
       { eventStore: this.eventStore },
     )
 
@@ -58,7 +59,7 @@ export class NostrService {
   ): Subscription {
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30403], '#d': [`${comicDTag}/`] }],
+      [{ kinds: [30041], '#d': [`${comicDTag}/`] }],
       { eventStore: this.eventStore },
     )
 
@@ -73,7 +74,7 @@ export class NostrService {
   subscribeToGlobalComics(onEvent?: (event: NostrEvent) => void): Subscription {
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30402], limit: 50 }],
+      [{ kinds: [30040], limit: 50 }],
       { eventStore: this.eventStore },
     )
     return source$.subscribe({
@@ -110,7 +111,7 @@ export class NostrService {
     }
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30402], authors, limit: 50 }],
+      [{ kinds: [30040], authors, limit: 50 }],
       { eventStore: this.eventStore },
     )
     return source$.subscribe({
@@ -128,7 +129,7 @@ export class NostrService {
   ): Subscription {
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30402], authors: [pubkey], '#d': [dTag] }],
+      [{ kinds: [30040], authors: [pubkey], '#d': [dTag] }],
       { eventStore: this.eventStore },
     )
     return source$.subscribe({
@@ -198,8 +199,18 @@ export class NostrService {
     })
   }
 
-  async publishEvent(event: NostrEvent): Promise<void> {
-    await this.relayPool.publish(this.getRelays(), event)
+  async publishEvent(event: NostrEvent): Promise<PublishResponse[]> {
+    const responses = await this.relayPool.publish(this.getRelays(), event)
+    const accepted = responses.filter((response) => response.ok)
+    if (accepted.length === 0) {
+      const details = responses.length > 0
+        ? responses.map((response) => `${response.from}: ${response.message ?? 'rejected'}`).join('; ')
+        : 'No relay responses'
+      throw new Error(`Failed to publish event: ${details}`)
+    }
+
+    this.eventStore.add(event)
+    return responses
   }
 
   async publishBlossomServerList(serverUrls: string[]): Promise<void> {
@@ -214,11 +225,7 @@ export class NostrService {
     }
 
     const signed = await account.signer.signEvent(template)
-    this.eventStore.add(signed)
-    const relays = this.getRelays()
-    await Promise.allSettled(
-      this.relayPool.group(relays).publish(signed)
-    )
+    await this.publishEvent(signed)
   }
 }
 

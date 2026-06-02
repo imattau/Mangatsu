@@ -9,7 +9,7 @@ import type { NostrEvent } from 'applesauce-core/helpers/event'
 const mockComicEvent: NostrEvent = {
   id: 'ev1',
   pubkey: 'pubkey1',
-  kind: 30402,
+  kind: 30040,
   created_at: 1700000000,
   tags: [
     ['d', 'dragon-ball'],
@@ -46,8 +46,9 @@ vi.mock('../stores/authStore', () => ({
 }))
 
 vi.mock('../stores/blossomStore', () => ({
-  useBlossomStore: (sel: (s: { primaryServer: () => string | undefined }) => unknown) =>
-    sel({ primaryServer: () => 'https://blossom.example' }),
+  useBlossomStore: (
+    sel: (s: { primaryServer: () => string | undefined; cachedHashes: Record<string, string> }) => unknown,
+  ) => sel({ primaryServer: () => 'https://blossom.example', cachedHashes: {} }),
 }))
 
 function Wrapper({ children }: { children: React.ReactNode }) {

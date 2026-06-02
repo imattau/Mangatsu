@@ -61,8 +61,8 @@ Events use parameterized replaceable kinds:
 
 | Kind  | Purpose                        | `d` tag pattern         |
 |-------|--------------------------------|-------------------------|
-| 30402 | Comic metadata                 | `comic-slug`            |
-| 30403 | Chapter (pages as `page` tags) | `comic-slug/chapter-N`  |
+| 30040 | Comic metadata                 | `comic-slug`            |
+| 30041 | Chapter (pages as `page` tags) | `comic-slug/chapter-N`  |
 | 30301 | Reading progress               | `comic-slug/chapter-N`  |
 | 10063 | User's Blossom server list     | (replaceable, no `d`)   |
 
@@ -81,7 +81,7 @@ Page images are referenced as `blossom://<sha256-hash>` URIs inside `page` tags 
 
 ### Service Design
 
-`NostrService` is a singleton (or React context value) that owns `EventStore`, `RelayPool`, `AccountManager`, and `EventFactory`. Screens subscribe to reactive queries on `EventStore` (e.g., `eventStore.replaceable({ kind: 30402, pubkey })`) rather than imperatively fetching.
+`NostrService` is a singleton (or React context value) that owns `EventStore`, `RelayPool`, `AccountManager`, and `EventFactory`. Screens subscribe to reactive queries on `EventStore` (e.g., `eventStore.replaceable({ kind: 30040, pubkey })`) rather than imperatively fetching.
 
 `BlossomService` is stateless. It reads the user's server list from `NostrService.eventStore` (kind 10063) and resolves `blossom://hash` → `https://server/blob/hash` at read time. Offline mode substitutes local file paths stored in MMKV.
 

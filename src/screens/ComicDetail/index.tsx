@@ -19,6 +19,10 @@ function parseTag(event: NostrEvent, name: string): string {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
 }
 
+function parseTagAt(event: NostrEvent, name: string, index: number): string {
+  return event.tags.find((tag) => tag[0] === name)?.[index] ?? ''
+}
+
 function parseAnyTag(event: NostrEvent, names: string[]): string {
   for (const name of names) {
     const value = parseTag(event, name)
@@ -27,27 +31,30 @@ function parseAnyTag(event: NostrEvent, names: string[]): string {
   return ''
 }
 
-function parsePageHashes(event: NostrEvent): string[] {
+function parsePageUploads(event: NostrEvent): Array<{ hash: string; server: string }> {
   return event.tags
     .filter((tag) => tag[0] === 'page')
     .map((tag) => {
       const raw = tag[1] ?? ''
-      return raw.startsWith('blossom://') ? raw.slice('blossom://'.length) : raw
+      const hash = raw.startsWith('blossom://') ? raw.slice('blossom://'.length) : raw
+      return { hash, server: tag[2] ?? '' }
     })
-    .filter(Boolean)
+    .filter((upload) => upload.hash.length > 0)
 }
 
 function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null {
   const dTag = parseTag(event, 'd')
   if (!dTag || !dTag.startsWith(`${comicDTag}/`)) return null
+  const pageUploads = parsePageUploads(event)
   return {
     id: event.id,
     pubkey: event.pubkey,
     dTag,
     parentDTag: comicDTag,
     title: parseTag(event, 'title') || dTag,
-    pageHashes: parsePageHashes(event),
-    blossomServer: parseTag(event, 'blossom'),
+    pageHashes: pageUploads.map((upload) => upload.hash),
+    pageServers: pageUploads.map((upload) => upload.server),
+    blossomServer: parseTag(event, 'blossom') || pageUploads[0]?.server || '',
     publishedAt: event.created_at ?? 0,
     eventId: event.id,
   }
@@ -56,6 +63,8 @@ function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null
 function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
   const dTag = parseTag(event, 'd')
   if (!dTag) return null
+  const coverHash = parseAnyTag(event, ['cover', 'cover_hash', 'image'])
+  const coverServer = parseTagAt(event, 'cover', 2) || parseTagAt(event, 'image', 2) || ''
   return {
     id: event.id,
     pubkey: event.pubkey,
@@ -63,8 +72,9 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
     title: parseTag(event, 'title') || event.content || 'Untitled',
     author: parseTag(event, 'author'),
     description: parseTag(event, 'description') || event.content || '',
-    coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
-    blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || server || '',
+    coverHash,
+    coverServer,
+    blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
     tags: event.tags.filter((t) => t[0] === 't').map((t) => t[1]).filter(Boolean),
     eventId: event.id,
   }
@@ -96,7 +106,7 @@ export function ComicDetailScreen() {
   const [searchParams] = useSearchParams()
   const foreignPubkey = searchParams.get('pubkey')
 
-  const { service } = useNostr()
+  const { service, syncGeneration } = useNostr()
   const eventStore = useEventStore()
 
   const myPubkey = useAuthStore((s) => s.pubkey)
@@ -118,20 +128,20 @@ export function ComicDetailScreen() {
     if (!dTag || !foreignPubkey) return
     const sub = service.subscribeToForeignComic(foreignPubkey, dTag)
     return () => sub.unsubscribe()
-  }, [dTag, foreignPubkey, service])
+  }, [dTag, foreignPubkey, service, syncGeneration])
 
   // Subscribe to chapters
   useEffect(() => {
     if (!dTag) return
     const sub = service.subscribeToChapters(dTag)
     return () => sub.unsubscribe()
-  }, [dTag, service])
+  }, [dTag, service, syncGeneration])
 
   // Live foreign comic event from eventStore
   const foreignComicFilter = useMemo(
     () =>
       dTag && foreignPubkey
-        ? [{ kinds: [30402], authors: [foreignPubkey], '#d': [dTag] }]
+        ? [{ kinds: [30040], authors: [foreignPubkey], '#d': [dTag] }]
         : null,
     [dTag, foreignPubkey],
   )
@@ -153,7 +163,7 @@ export function ComicDetailScreen() {
 
   // Chapter live events
   const chapterFilter = useMemo(
-    () => (dTag ? [{ kinds: [30403], '#d': [`${dTag}/`] }] : null),
+    () => (dTag ? [{ kinds: [30041], '#d': [`${dTag}/`] }] : null),
     [dTag],
   )
   const chapterTimeline$ = useMemo(
@@ -177,7 +187,7 @@ export function ComicDetailScreen() {
       .sort((a, b) => chapterNumber(a.dTag) - chapterNumber(b.dTag))
   }, [chaptersForComic, dTag])
 
-  const server = comic?.blossomServer || primaryServer()
+  const server = comic?.coverServer || comic?.blossomServer || primaryServer()
 
   const isForeign = foreignPubkey !== null && foreignPubkey !== myPubkey
 
@@ -191,13 +201,15 @@ export function ComicDetailScreen() {
       ]
       if (comic.author) tags.push(['author', comic.author])
       if (comic.description) tags.push(['description', comic.description])
-      if (comic.coverHash) tags.push(['cover', comic.coverHash])
+      if (comic.coverHash) {
+        tags.push(['cover', comic.coverHash, comic.coverServer || comic.blossomServer || primaryServer() || ''])
+      }
       if (comic.blossomServer) tags.push(['blossom', comic.blossomServer])
       for (const tag of comic.tags) {
         tags.push(['t', tag])
       }
 
-      const template = { kind: 30402 as const, tags, content: '' }
+      const template = { kind: 30040 as const, tags, content: '' }
       const signed = await service.eventFactory.build(template)
       if (signed) {
         await service.publishEvent(signed as NostrEvent)
@@ -222,7 +234,7 @@ export function ComicDetailScreen() {
 
         {comic ? (
           <header className="flex gap-4 items-end">
-            <CoverImage hash={comic.coverHash} server={server} title={comic.title} />
+              <CoverImage hash={comic.coverHash} server={server} title={comic.title} />
             <div className="flex-1 min-w-0">
               <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">
                 {comic.author || 'Unknown author'}
@@ -331,9 +343,11 @@ function CoverImage({
   server: string | undefined
   title: string
 }) {
+  const cachedUrl = useBlossomStore((state) => state.cachedHashes[hash] ?? '')
   const url = coverUrl(hash, server)
+  const imageUrl = cachedUrl || url
   const className =
     'aspect-[2/3] w-20 flex-shrink-0 rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
-  if (!url) return <div className={className} />
-  return <img src={url} alt={title} loading="lazy" className={className} />
+  if (!imageUrl) return <div className={className} />
+  return <img src={imageUrl} alt={title} loading="lazy" className={className} />
 }
