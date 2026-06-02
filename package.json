@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@nostr-dev-kit/ndk": "^3.0.3",
     "applesauce-accounts": "^6.0.0",
     "applesauce-core": "^6.1.0",
     "applesauce-factory": "^4.0.0",

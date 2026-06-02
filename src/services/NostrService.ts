@@ -170,6 +170,34 @@ export class NostrService {
     return { unsubscribe: () => sub.unsubscribe() }
   }
 
+  async fetchProfile(pubkey: string): Promise<{ lud16?: string; lud06?: string; name?: string } | null> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        sub.unsubscribe()
+        resolve(null)
+      }, 5000)
+
+      const source$ = this.relayPool.subscription(
+        this.getRelays(),
+        [{ kinds: [0], authors: [pubkey], limit: 1 }],
+        { eventStore: this.eventStore },
+      )
+
+      const sub = source$.subscribe({
+        next: (event) => {
+          clearTimeout(timeout)
+          sub.unsubscribe()
+          try {
+            const profile = JSON.parse(event.content) as { lud16?: string; lud06?: string; name?: string }
+            resolve(profile)
+          } catch {
+            resolve(null)
+          }
+        },
+      })
+    })
+  }
+
   async publishEvent(event: NostrEvent): Promise<void> {
     await this.relayPool.publish(this.getRelays(), event)
   }

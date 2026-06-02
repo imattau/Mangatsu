@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useBlossomStore, DEFAULT_BLOSSOM_SERVERS } from '@/stores/blossomStore'
 import { useRelayStore } from '@/stores/relayStore'
 import { useNostr } from '@/context/NostrContext'
+import { useNwcStore } from '@/stores/nwcStore'
 
 function truncatePubkey(pubkey: string) {
   if (pubkey.length <= 16) return pubkey
@@ -19,6 +20,9 @@ export function SettingsScreen() {
   const activeRelays = useRelayStore((state) => state.activeRelays)
   const userRelays = useRelayStore((state) => state.relays)
   const { service } = useNostr()
+  const nwcConnectionString = useNwcStore((s) => s.connectionString)
+  const setConnectionString = useNwcStore((s) => s.setConnectionString)
+  const [nwcInput, setNwcInput] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const displayRelays = activeRelays()
   const usingDefaultRelays = userRelays.length === 0
@@ -170,6 +174,43 @@ export function SettingsScreen() {
               </li>
             ))}
           </ul>
+        </section>
+        {/* Wallet (NWC) */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5" data-testid="nwc-section">
+          <p className="mb-1 text-xs uppercase tracking-[0.35em] text-zinc-500">Wallet (NWC)</p>
+          <p className="mb-4 text-xs text-zinc-600">
+            Nostr Wallet Connect — connect a Lightning wallet to enable zapping
+          </p>
+          {nwcConnectionString ? (
+            <div className="flex items-center justify-between gap-4">
+              <p className="truncate font-mono text-xs text-zinc-400">
+                {nwcConnectionString.slice(0, 40)}…
+              </p>
+              <button
+                onClick={() => setConnectionString(null)}
+                className="flex-shrink-0 rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-red-800 hover:text-red-400"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={nwcInput}
+                onChange={(e) => setNwcInput(e.target.value)}
+                placeholder="nostr+walletconnect://..."
+                data-testid="nwc-input"
+                className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
+              />
+              <button
+                onClick={() => { if (nwcInput.trim()) { setConnectionString(nwcInput.trim()); setNwcInput('') } }}
+                className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              >
+                Save
+              </button>
+            </div>
+          )}
         </section>
       </div>
     </div>

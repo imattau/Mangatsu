@@ -49,6 +49,12 @@ export function ChapterStep({ values, coverMode, onChange, onNext, onBack }: Cha
 
   const handleCbz = useCallback(
     async (file: File) => {
+      if (file.name.toLowerCase().endsWith('.pdf')) {
+        setParseError(
+          'PDF files aren\'t supported. Convert to CBZ first using Calibre (https://calibre-ebook.com, free), then upload here.',
+        )
+        return
+      }
       if (!file.name.toLowerCase().endsWith('.cbz')) {
         setParseError('Please select a .cbz file')
         return

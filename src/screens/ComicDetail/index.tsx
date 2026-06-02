@@ -5,6 +5,7 @@ import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { of } from 'rxjs'
 import { useNostr } from '@/context/NostrContext'
 import { useAuthStore } from '@/stores/authStore'
+import { ZapButton } from '@/components/ZapButton'
 import { useComicStore } from '@/stores/comicStore'
 import { useReadStore } from '@/stores/readStore'
 import { useBlossomStore } from '@/stores/blossomStore'
@@ -232,15 +233,20 @@ export function ComicDetailScreen() {
               <p className="mt-1 text-sm text-zinc-400">
                 {chapters.length} chapter{chapters.length !== 1 ? 's' : ''}
               </p>
-              {isForeign && !addedToLibrary && (
-                <button
-                  onClick={() => void handleAddToLibrary()}
-                  disabled={adding}
-                  className="mt-3 rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-50"
-                >
-                  {adding ? 'Adding…' : 'Add to Library'}
-                </button>
-              )}
+              <div className="mt-3 flex gap-2 flex-wrap">
+                {isForeign && !addedToLibrary && (
+                  <button
+                    onClick={() => void handleAddToLibrary()}
+                    disabled={adding}
+                    className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-50"
+                  >
+                    {adding ? 'Adding…' : 'Add to Library'}
+                  </button>
+                )}
+                {comic.pubkey && comic.pubkey !== myPubkey && (
+                  <ZapButton authorPubkey={comic.pubkey} />
+                )}
+              </div>
               {addedToLibrary && (
                 <p className="mt-3 text-sm text-emerald-400">Added to your library</p>
               )}

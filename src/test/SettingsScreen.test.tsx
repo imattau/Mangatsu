@@ -44,6 +44,14 @@ vi.mock('../context/NostrContext', () => ({
   useNostr: () => ({ service: { publishBlossomServerList: mockPublishBlossomServerList } }),
 }))
 
+let mockNwcConnectionString: string | null = null
+const mockSetConnectionString = vi.fn((s: string | null) => { mockNwcConnectionString = s })
+
+vi.mock('../stores/nwcStore', () => ({
+  useNwcStore: (sel: (s: { connectionString: string | null; setConnectionString: (s: string | null) => void }) => unknown) =>
+    sel({ connectionString: mockNwcConnectionString, setConnectionString: mockSetConnectionString }),
+}))
+
 vi.mock('../stores/relayStore', () => ({
   DEFAULT_RELAYS: [
     'wss://relay.damus.io',
@@ -71,10 +79,12 @@ describe('SettingsScreen', () => {
   beforeEach(() => {
     mockPubkey = 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
     mockServers = []
+    mockNwcConnectionString = null
     mockClearAuth.mockClear()
     mockSetServers.mockClear()
     mockNavigate.mockClear()
     mockPublishBlossomServerList.mockClear()
+    mockSetConnectionString.mockClear()
   })
 
   it('renders truncated pubkey', () => {
@@ -131,5 +141,30 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('wss://relay.primal.net')).toBeInTheDocument()
     expect(screen.getByText('wss://nos.lol')).toBeInTheDocument()
     expect(screen.getByText(/using public defaults/i)).toBeInTheDocument()
+  })
+
+  it('renders NWC section', () => {
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    expect(screen.getByTestId('nwc-section')).toBeInTheDocument()
+    expect(screen.getByText(/Wallet \(NWC\)/i)).toBeInTheDocument()
+  })
+
+  it('shows NWC input when not connected', () => {
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    expect(screen.getByTestId('nwc-input')).toBeInTheDocument()
+  })
+
+  it('saves NWC connection string', () => {
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    const input = screen.getByTestId('nwc-input')
+    fireEvent.change(input, { target: { value: 'nostr+walletconnect://pubkey?relay=wss://r.example&secret=abc' } })
+    fireEvent.click(screen.getByText('Save'))
+    expect(mockSetConnectionString).toHaveBeenCalledWith('nostr+walletconnect://pubkey?relay=wss://r.example&secret=abc')
+  })
+
+  it('shows disconnect button when NWC is connected', () => {
+    mockNwcConnectionString = 'nostr+walletconnect://pubkey?relay=wss://r.example&secret=abc'
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    expect(screen.getByText('Disconnect')).toBeInTheDocument()
   })
 })
