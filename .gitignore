@@ -24,5 +24,10 @@ dist-ssr
 *.sw?
 
 .superpowers/
+.agents/
+.claude/
+.codex/
+plugins/typegraph-mcp/smoke-test.ts
+plugins/typegraph-mcp/tsserver-client.ts
 .env.local
 .env.*.local

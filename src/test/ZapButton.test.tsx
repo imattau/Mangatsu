@@ -16,9 +16,8 @@ vi.mock('../context/NostrContext', () => ({
 }))
 
 const mockPayInvoice = vi.fn().mockResolvedValue(undefined)
-vi.mock('@nostr-dev-kit/ndk', () => ({
-  default: function MockNDK() { return {} },
-  NDKNwc: function MockNDKNwc() {
+vi.mock('../lib/nwc', () => ({
+  NwcClient: function MockNwcClient() {
     return {
       blockUntilReady: vi.fn().mockResolvedValue(undefined),
       payInvoice: mockPayInvoice,

@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import NDK, { NDKNwc } from '@nostr-dev-kit/ndk'
 import { decode } from 'light-bolt11-decoder'
+import type { RelayPool } from 'applesauce-relay'
 import { useNwcStore } from '@/stores/nwcStore'
 import { useNostr } from '@/context/NostrContext'
+import { NwcClient } from '@/lib/nwc'
 
 interface ZapButtonProps {
   authorPubkey: string
@@ -27,10 +28,11 @@ function validateCallback(callback: string, expectedDomain: string): boolean {
 }
 
 async function fetchInvoice(
+  relayPool: RelayPool,
   connectionString: string,
   lud16: string,
   amountSats: number,
-): Promise<{ nwc: NDKNwc; invoice: string; amountSats: number }> {
+): Promise<{ nwc: NwcClient; invoice: string; amountSats: number }> {
   // Validate amount
   const parsed = parseInt(String(amountSats), 10)
   if (isNaN(parsed) || parsed <= 0 || parsed > 1_000_000) {
@@ -44,8 +46,7 @@ async function fetchInvoice(
   }
   const { user, domain } = addr
 
-  const ndk = new NDK()
-  const nwc = new NDKNwc({ ndk, pairingCode: connectionString })
+  const nwc = new NwcClient({ connectionString, relayPool })
   await nwc.blockUntilReady()
 
   const lnurlRes = await fetch(
@@ -84,7 +85,7 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'confirming' | 'paying' | 'success' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [pendingInvoice, setPendingInvoice] = useState<{
-    nwc: NDKNwc
+    nwc: NwcClient
     pr: string
     amountSats: number
   } | null>(null)
@@ -107,6 +108,7 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
       }
       const finalAmount = customAmount ? parseInt(customAmount, 10) : amount
       const { nwc, invoice, amountSats } = await fetchInvoice(
+        service.relayPool,
         connectionString,
         lud16 ?? lud06!,
         finalAmount,

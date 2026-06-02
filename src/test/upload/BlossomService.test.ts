@@ -49,14 +49,14 @@ describe('BlossomService.upload', () => {
       async (_server: string, _blob: File, opts: { onAuth?: OnAuth }) => {
         // simulate calling onAuth
         const authEvent = await opts.onAuth!('https://blossom.example.com', 'deadbeef', 'upload', mockFile)
-        expect(authEvent).toHaveProperty('kind', 27235)
+        expect(authEvent).toHaveProperty('kind', 24242)
         return { sha256: 'deadbeef', url: '', size: 1, type: 'image/jpeg', created: 0 }
       },
     )
 
     await service.upload(mockFile, 'https://blossom.example.com', mockSigner as never)
     expect(mockSigner.signEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 27235 }),
+      expect.objectContaining({ kind: 24242 }),
     )
   })
 

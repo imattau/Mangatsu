@@ -1,4 +1,5 @@
 import { Actions } from 'blossom-client-sdk'
+import { createUploadAuth } from 'blossom-client-sdk/auth'
 import type { SignedEvent } from 'blossom-client-sdk'
 
 export interface BlossomSigner {
@@ -13,18 +14,11 @@ export class BlossomService {
   async upload(file: File, serverUrl: string, signer: BlossomSigner): Promise<string> {
     const descriptor = await Actions.uploadBlob(serverUrl, file, {
       onAuth: async (server, sha256) => {
-        const uploadUrl = `${server.replace(/\/$/, '')}/upload`
-        const template = {
-          kind: 27235,
-          created_at: Math.floor(Date.now() / 1000),
-          tags: [
-            ['u', uploadUrl],
-            ['method', 'PUT'],
-            ['payload', sha256],
-          ],
-          content: '',
-        }
-        return signer.signEvent(template)
+        return createUploadAuth(
+          (draft) => signer.signEvent(draft),
+          sha256,
+          { servers: server },
+        )
       },
     })
     return descriptor.sha256
