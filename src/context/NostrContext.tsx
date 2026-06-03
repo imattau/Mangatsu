@@ -16,6 +16,10 @@ import { NostrService } from '@/services/NostrService'
 import { useAuthStore, type AuthMethod } from '@/stores/authStore'
 import { DEFAULT_RELAYS, useRelayStore } from '@/stores/relayStore'
 import { useBlossomStore } from '@/stores/blossomStore'
+import { useLibraryStore } from '@/stores/libraryStore'
+import { decryptFromSelf, decodeLibraryList } from '@/lib/nip51'
+import type { Nip44Signer } from '@/lib/nip51'
+import { useComicStore } from '@/stores/comicStore'
 
 const NSEC_SESSION_KEY = 'mangatsu:nsec'
 
@@ -110,6 +114,10 @@ export function NostrProvider({ children }: PropsWithChildren) {
       const resolvedMethod = restoreMethod(method)
 
       if (resolvedMethod === 'bunker' || resolvedMethod === 'qr') {
+        const active = service.accountManager.active
+        if (active && active.pubkey === pubkey) {
+          return
+        }
         clearAuth()
         service.accountManager.clearActive()
         return
@@ -187,6 +195,42 @@ export function NostrProvider({ children }: PropsWithChildren) {
       (urls) => useBlossomStore.getState().setServers(urls.map((url) => ({ url }))),
     )
     return () => sub.unsubscribe()
+  }, [pubkey, relayKey, service, syncGeneration])
+
+  useEffect(() => {
+    if (!pubkey) return
+
+    const setAll = useLibraryStore.getState().setAll
+
+    const librarySub = service.subscribeToLibraryList(pubkey, async (event) => {
+      try {
+        const windowNostr = typeof window !== 'undefined'
+          ? (window as unknown as { nostr?: Nip44Signer }).nostr
+          : undefined
+        const { secretKey } = useAuthStore.getState()
+        const plaintext = await decryptFromSelf(event.content, {
+          windowNostr,
+          secretKey: secretKey ?? undefined,
+          pubkey,
+        })
+        const aTags = decodeLibraryList(plaintext)
+        setAll(aTags)
+
+        // Fetch metadata for any saved comics not yet in comicStore
+        const { comics } = useComicStore.getState()
+        for (const aTag of aTags) {
+          const parts = aTag.split(':')
+          if (parts.length < 3) continue
+          const [, authorPubkey, dTag] = parts
+          if (!authorPubkey || !dTag || comics[dTag]) continue
+          service.subscribeToForeignComic(authorPubkey, dTag).unsubscribe()
+        }
+      } catch {
+        // decryption failed — leave existing local state intact
+      }
+    })
+
+    return () => librarySub.unsubscribe()
   }, [pubkey, relayKey, service, syncGeneration])
 
   return (
