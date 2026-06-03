@@ -1,13 +1,18 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { QRCode } from 'react-qr-code'
+import type { SerializedAccount } from 'applesauce-accounts'
 import { NostrConnectAccount } from 'applesauce-accounts/accounts'
+import type { NostrConnectAccountSignerData } from 'applesauce-accounts/accounts'
 import { NostrConnectSigner, PrivateKeySigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
 
 const CONNECT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol']
 
 interface Props {
-  onSuccess: (pubkey: string) => void
+  onSuccess: (
+    pubkey: string,
+    account: SerializedAccount<NostrConnectAccountSignerData>,
+  ) => void
   onCancel: () => void
 }
 
@@ -53,7 +58,7 @@ export function QrCodeView({ onSuccess: onSuccessProp, onCancel }: Props) {
           service.accountManager.addAccount(account)
         }
         service.accountManager.setActive(active)
-        onSuccess(active.pubkey)
+        onSuccess(active.pubkey, account.toJSON())
       } catch {
         if (!cancelled) {
           setError('QR connection failed. Try again.')

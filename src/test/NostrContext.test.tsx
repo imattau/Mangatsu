@@ -8,20 +8,40 @@ const mocks = vi.hoisted(() => {
   const mockClearAuth = vi.fn()
   const mockSetRelays = vi.fn()
   const mockSetServers = vi.fn()
+  const mockFromExtension = vi.fn()
+  const mockAccountData = {
+    id: 'account-id',
+    type: 'nostr-connect',
+    pubkey: 'pubkey',
+    signer: {
+      clientKey: '11'.repeat(32),
+      remote: 'remote-pubkey',
+      relays: ['wss://relay.example'],
+    },
+  }
   const state = {
     pubkey: 'pubkey' as string | null,
     method: 'bunker' as AuthMethod | null,
     secretKey: null as Uint8Array | null,
+    account: mockAccountData as typeof mockAccountData | null,
   }
-  return { mockSetAuth, mockClearAuth, mockSetRelays, mockSetServers, state }
+  return {
+    mockSetAuth,
+    mockClearAuth,
+    mockSetRelays,
+    mockSetServers,
+    mockFromExtension,
+    mockAccountData,
+    state,
+  }
 })
 
-let mockPubkey: string | null = 'pubkey'
-let mockMethod: AuthMethod | null = 'bunker'
 const mockSetAuth = mocks.mockSetAuth
 const mockClearAuth = mocks.mockClearAuth
 const mockSetRelays = mocks.mockSetRelays
 const mockSetServers = mocks.mockSetServers
+const mockFromExtension = mocks.mockFromExtension
+const mockAccountData = mocks.mockAccountData
 
 type MockActiveAccount = { pubkey: string } | null
 
@@ -48,6 +68,20 @@ const mockService = {
   subscribeToLibraryList: vi.fn(() => ({ unsubscribe: vi.fn() })),
 }
 
+vi.mock('applesauce-accounts/accounts', async () => {
+  const actual = await vi.importActual<typeof import('applesauce-accounts/accounts')>(
+    'applesauce-accounts/accounts',
+  )
+
+  return {
+    ...actual,
+    ExtensionAccount: {
+      ...actual.ExtensionAccount,
+      fromExtension: mocks.mockFromExtension,
+    },
+  }
+})
+
 vi.mock('../stores/authStore', () => ({
   useAuthStore: Object.assign(
     (sel: (s: Record<string, unknown>) => unknown) =>
@@ -55,6 +89,7 @@ vi.mock('../stores/authStore', () => ({
         pubkey: mocks.state.pubkey,
         method: mocks.state.method,
         secretKey: mocks.state.secretKey,
+        account: mocks.state.account,
         setAuth: mocks.mockSetAuth,
         clearAuth: mocks.mockClearAuth,
       }),
@@ -63,6 +98,7 @@ vi.mock('../stores/authStore', () => ({
         pubkey: mocks.state.pubkey,
         method: mocks.state.method,
         secretKey: mocks.state.secretKey,
+        account: mocks.state.account,
       }),
     },
   ),
@@ -123,14 +159,14 @@ function renderProvider() {
 
 describe('NostrProvider auth restore', () => {
   beforeEach(() => {
-    mockPubkey = 'pubkey'
-    mockMethod = 'bunker'
     mocks.state.pubkey = 'pubkey'
     mocks.state.method = 'bunker'
+    mocks.state.account = mockAccountData
     mockSetAuth.mockClear()
     mockClearAuth.mockClear()
     mockSetRelays.mockClear()
     mockSetServers.mockClear()
+    mockFromExtension.mockReset()
     mockService.accountManager.clearActive.mockClear()
     mockService.accountManager.setActive.mockClear()
     mockService.accountManager.addAccount.mockClear()
@@ -144,7 +180,7 @@ describe('NostrProvider auth restore', () => {
 
   it.each(['bunker', 'qr'] as AuthMethod[])('keeps active %s auth during session', async (method) => {
     mocks.state.method = method
-    mockMethod = method
+    mocks.state.account = mockAccountData
     mockService.accountManager.active = { pubkey: 'pubkey' }
 
     renderProvider()
@@ -156,16 +192,35 @@ describe('NostrProvider auth restore', () => {
     })
   })
 
-  it.each(['bunker', 'qr'] as AuthMethod[])('clears stale %s auth after reload', async (method) => {
+  it.each(['bunker', 'qr'] as AuthMethod[])('restores persisted %s auth after reload', async (method) => {
     mocks.state.method = method
-    mockMethod = method
+    mocks.state.account = mockAccountData
     mockService.accountManager.active = null
 
     renderProvider()
 
     await waitFor(() => {
-      expect(mockClearAuth).toHaveBeenCalled()
-      expect(mockService.accountManager.clearActive).toHaveBeenCalled()
+      expect(mockClearAuth).not.toHaveBeenCalled()
+      expect(mockService.accountManager.clearActive).not.toHaveBeenCalled()
+      expect(mockService.accountManager.addAccount).toHaveBeenCalled()
+      expect(mockService.accountManager.setActive).toHaveBeenCalled()
+    })
+  })
+
+  it('retries transient extension restore failures without clearing auth', async () => {
+    mocks.state.method = 'extension'
+    mocks.state.account = null
+    mockService.accountManager.active = null
+    mockFromExtension
+      .mockRejectedValueOnce(new Error('not ready'))
+      .mockResolvedValueOnce({ pubkey: 'pubkey' } as never)
+
+    renderProvider()
+
+    await waitFor(() => {
+      expect(mockService.accountManager.setActive).toHaveBeenCalled()
+      expect(mockClearAuth).not.toHaveBeenCalled()
+      expect(mockService.accountManager.clearActive).not.toHaveBeenCalled()
     })
   })
 })

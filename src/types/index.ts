@@ -8,6 +8,7 @@ export interface Comic {
   coverHash: string
   blossomServer: string
   coverServer?: string
+  coverServers?: string[]
   tags: string[]
   eventId: string
 }
@@ -21,6 +22,7 @@ export interface Chapter {
   pageHashes: string[]
   blossomServer: string
   pageServers?: string[]
+  pageServerLists?: string[][]
   publishedAt: number
   eventId: string
 }

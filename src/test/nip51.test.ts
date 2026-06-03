@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest'
 import { encodeLibraryList, decodeLibraryList } from '@/lib/nip51'
 
 describe('encodeLibraryList / decodeLibraryList', () => {

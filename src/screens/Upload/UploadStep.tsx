@@ -4,6 +4,7 @@ import { DEFAULT_BLOSSOM_SERVERS, useBlossomStore } from '@/stores/blossomStore'
 import { useNostr } from '@/context/NostrContext'
 import { convertImageFileToWebp } from './webp'
 import type { UploadArtifact } from './publishDraft'
+import { BLOSSOM_UPLOAD_TIMEOUT_MS, uploadFileToServers } from './uploadHelpers'
 
 export interface ServerResult {
   url: string
@@ -45,6 +46,25 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     return [...new Set(ordered.filter((server) => server.trim().length > 0))]
   }
 
+  async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    let timer: number | undefined
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = window.setTimeout(
+            () => reject(new Error(`Timed out ${label}`)),
+            timeoutMs,
+          )
+        }),
+      ])
+    } finally {
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+      }
+    }
+  }
+
   useEffect(() => {
     if (ranRef.current) return
     ranRef.current = true
@@ -56,25 +76,16 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     const account = service.accountManager.active
     if (!account) throw new Error('Not logged in')
 
-    let hash: string | null = null
-    const successfulServers: string[] = []
-
-    for (const serverUrl of serverUrls) {
-      try {
-        const result = await blossomService.upload(file, serverUrl, account.signer as never)
-        setCachedHash(result.sha256, result.url)
-        hash = result.sha256
-        successfulServers.push(serverUrl)
-      } catch {
-        // continue to next server
-      }
-    }
-
-    if (hash === null) {
-      throw new Error('Failed to upload to any Blossom server.')
-    }
-
-    return { hash, servers: successfulServers }
+    return uploadFileToServers(
+      serverUrls,
+      (serverUrl) =>
+        withTimeout(
+          blossomService.upload(file, serverUrl, account.signer as never),
+          BLOSSOM_UPLOAD_TIMEOUT_MS,
+          `uploading to ${serverUrl}`,
+        ),
+      setCachedHash,
+    )
   }
 
   async function convertAndUploadToAll(file: File, serverUrls: string[]): Promise<UploadArtifact> {

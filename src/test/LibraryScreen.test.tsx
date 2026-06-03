@@ -43,9 +43,14 @@ vi.mock('../stores/authStore', () => ({
 }))
 
 vi.mock('../stores/blossomStore', () => ({
+  DEFAULT_BLOSSOM_SERVERS: ['https://blossom.primal.net', 'https://blossom.band', 'https://cdn.satellite.earth'],
   useBlossomStore: (
-    sel: (s: { primaryServer: () => string | undefined; cachedHashes: Record<string, string> }) => unknown,
-  ) => sel({ primaryServer: () => 'https://blossom.example', cachedHashes: {} }),
+    sel: (s: {
+      servers: { url: string }[]
+      primaryServer: () => string | undefined
+      cachedHashes: Record<string, string>
+    }) => unknown,
+  ) => sel({ servers: [], primaryServer: () => 'https://blossom.example', cachedHashes: {} }),
 }))
 
 vi.mock('../stores/comicStore', () => ({

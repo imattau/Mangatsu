@@ -11,7 +11,7 @@ import {
 import { AccountsProvider } from 'applesauce-react/providers'
 import { EventStoreProvider } from 'applesauce-react/providers'
 import { NostrConnectSigner } from 'applesauce-signers'
-import { ExtensionAccount, PrivateKeyAccount } from 'applesauce-accounts/accounts'
+import { ExtensionAccount, NostrConnectAccount, PrivateKeyAccount } from 'applesauce-accounts/accounts'
 import { NostrService } from '@/services/NostrService'
 import { useAuthStore, type AuthMethod } from '@/stores/authStore'
 import { DEFAULT_RELAYS, useRelayStore } from '@/stores/relayStore'
@@ -46,12 +46,36 @@ function restoreMethod(method: AuthMethod | null) {
   return method
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+async function restoreExtensionAccount(
+  attempts = 20,
+  delayMs = 100,
+): Promise<ExtensionAccount | null> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await ExtensionAccount.fromExtension()
+    } catch {
+      if (attempt < attempts - 1) {
+        await sleep(delayMs)
+      }
+    }
+  }
+
+  return null
+}
+
 export function NostrProvider({ children }: PropsWithChildren) {
   const [service] = useState(() => new NostrService())
   const [syncGeneration, setSyncGeneration] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const pubkey = useAuthStore((state) => state.pubkey)
   const method = useAuthStore((state) => state.method)
+  const accountData = useAuthStore((state) => state.account)
   const setAuth = useAuthStore((state) => state.setAuth)
   const clearAuth = useAuthStore((state) => state.clearAuth)
   const relayUrls = useRelayStore((state) => state.relays)
@@ -118,6 +142,24 @@ export function NostrProvider({ children }: PropsWithChildren) {
         if (active && active.pubkey === pubkey) {
           return
         }
+        if (accountData) {
+          try {
+            const account = NostrConnectAccount.fromJSON(accountData)
+            const existing = service.accountManager.getAccountForPubkey(account.pubkey)
+            const restored = existing ?? account
+            if (!existing) {
+              service.accountManager.addAccount(account)
+            }
+            service.accountManager.setActive(restored)
+            if (!cancelled && (pubkey !== restored.pubkey || method !== resolvedMethod)) {
+              setAuth(restored.pubkey, resolvedMethod, accountData)
+            }
+            return
+          } catch {
+            // fall through to clearing auth below
+          }
+        }
+
         clearAuth()
         service.accountManager.clearActive()
         return
@@ -151,7 +193,10 @@ export function NostrProvider({ children }: PropsWithChildren) {
       }
 
       try {
-        const account = await ExtensionAccount.fromExtension()
+        const account = await restoreExtensionAccount()
+        if (!account) {
+          return
+        }
         const existing = service.accountManager.getAccountForPubkey(account.pubkey)
         const active = existing ?? account
         if (!existing) {
@@ -172,7 +217,7 @@ export function NostrProvider({ children }: PropsWithChildren) {
     return () => {
       cancelled = true
     }
-  }, [clearAuth, method, pubkey, service, setAuth])
+  }, [accountData, clearAuth, method, pubkey, service, setAuth])
 
   useEffect(() => {
     if (!pubkey) {

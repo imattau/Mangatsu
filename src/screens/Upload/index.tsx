@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { BrandMark } from '@/components/BrandMark'
 import { MetadataStep, type MetadataFormValues } from './MetadataStep'
 import { ChapterStep, type ChapterFormValues } from './ChapterStep'
-import { UploadStep, type UploadResult, type ServerResult } from './UploadStep'
+import { UploadStep, type UploadResult } from './UploadStep'
 import { PublishStep } from './PublishStep'
 import { DoneStep } from './DoneStep'
 

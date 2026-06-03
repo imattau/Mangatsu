@@ -54,8 +54,9 @@ function parseTag(event: NostrEvent, name: string) {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
 }
 
-function parseTagAt(event: NostrEvent, name: string, index: number) {
-  return event.tags.find((tag) => tag[0] === name)?.[index] ?? ''
+function parseTagTail(event: NostrEvent, name: string, startIndex: number) {
+  const tag = event.tags.find((entry) => entry[0] === name)
+  return tag ? tag.slice(startIndex).filter(Boolean) : []
 }
 
 function parseAnyTag(event: NostrEvent, names: string[]) {
@@ -73,7 +74,11 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
   if (!dTag) {
     return null
   }
-  const coverServer = parseTagAt(event, 'cover', 2) || parseTagAt(event, 'image', 2) || ''
+  const coverServers = [
+    ...parseTagTail(event, 'cover', 2),
+    ...parseTagTail(event, 'image', 2),
+  ]
+  const coverServer = coverServers[0] || ''
 
   return {
     id: event.id,
@@ -85,6 +90,7 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
     coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
     blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
     coverServer,
+    coverServers,
     tags: event.tags
       .filter((tag) => tag[0] === 't')
       .map((tag) => tag[1])
@@ -183,15 +189,15 @@ export function LibraryScreen() {
     <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 py-4 text-zinc-100">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3 overflow-hidden">
             <BrandMark size="sm" showLabel={false} />
-            <div>
+            <div className="min-w-0">
               <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight">Library</h1>
+              <h1 className="mt-2 truncate text-2xl font-semibold tracking-tight">Library</h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <HeaderNav />
             <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs text-zinc-400">
               {onlineCount > 0 ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
@@ -246,6 +252,7 @@ export function LibraryScreen() {
                 comic={continueComic}
                 size="hero"
                 server={continueComic.coverServer || continueComic.blossomServer || primaryServer()}
+                servers={continueComic.coverServers}
               />
               <div>
                 <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
@@ -300,6 +307,7 @@ export function LibraryScreen() {
                         comic={comic}
                         size="grid"
                         server={comic.coverServer || comic.blossomServer || primaryServer()}
+                        servers={comic.coverServers}
                       />
                       <div className="px-0.5">
                         <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
@@ -331,6 +339,7 @@ export function LibraryScreen() {
                           comic={comic}
                           size="grid"
                           server={comic.coverServer || comic.blossomServer || primaryServer()}
+                          servers={comic.coverServers}
                         />
                         <div className="px-0.5">
                           <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
@@ -399,10 +408,12 @@ function CoverImage({
   comic,
   size,
   server,
+  servers,
 }: {
   comic: Comic
   size: 'hero' | 'grid'
   server: string | undefined
+  servers?: string[]
 }) {
   const className =
     size === 'hero'
@@ -417,6 +428,7 @@ function CoverImage({
     <BlossomImage
       hash={comic.coverHash}
       server={server}
+      servers={servers}
       alt={comic.title}
       loading="lazy"
       className={className}

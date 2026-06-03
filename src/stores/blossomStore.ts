@@ -26,6 +26,14 @@ export const useBlossomStore = create<BlossomState>()(
         set((s) => ({ cachedHashes: { ...s.cachedHashes, [hash]: objectUrl } })),
       primaryServer: () => get().servers[0]?.url ?? DEFAULT_BLOSSOM_SERVERS[0],
     }),
-    { name: 'blossom' },
+    {
+      name: 'blossom',
+      partialize: (state) => ({ servers: state.servers }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<BlossomState>),
+        cachedHashes: {},
+      }),
+    },
   ),
 )

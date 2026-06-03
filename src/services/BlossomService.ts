@@ -8,7 +8,7 @@ export interface BlossomSigner {
 
 export class BlossomService {
   resolveUrl(hash: string, serverUrl: string): string {
-    return `${serverUrl.replace(/\/$/, '')}/blob/${hash}`
+    return `${serverUrl.replace(/\/$/, '')}/${hash}`
   }
 
   async upload(file: File, serverUrl: string, signer: BlossomSigner): Promise<{ sha256: string; url: string }> {

@@ -5,6 +5,8 @@ import {
   NostrConnectAccount,
   PrivateKeyAccount,
 } from 'applesauce-accounts/accounts'
+import type { SerializedAccount } from 'applesauce-accounts'
+import type { NostrConnectAccountSignerData } from 'applesauce-accounts/accounts'
 import { NostrConnectSigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
 import { BrandMark } from '@/components/BrandMark'
@@ -23,7 +25,11 @@ async function commitLogin(
   account: ExtensionAccount | PrivateKeyAccount | NostrConnectAccount,
   method: 'extension' | 'nsec' | 'bunker' | 'qr',
   service: ReturnType<typeof useNostr>['service'],
-  setAuth: (pubkey: string, method: 'extension' | 'nsec' | 'bunker' | 'qr') => void,
+  setAuth: (
+    pubkey: string,
+    method: 'extension' | 'nsec' | 'bunker' | 'qr',
+    account?: SerializedAccount<NostrConnectAccountSignerData> | null,
+  ) => void,
 ) {
   const existing = service.accountManager.getAccountForPubkey(account.pubkey)
   const active = existing ?? account
@@ -31,7 +37,11 @@ async function commitLogin(
     service.accountManager.addAccount(account)
   }
   service.accountManager.setActive(active)
-  setAuth(active.pubkey, method)
+  setAuth(
+    active.pubkey,
+    method,
+    account instanceof NostrConnectAccount ? account.toJSON() : null,
+  )
 }
 
 export function LoginScreen() {
@@ -229,8 +239,8 @@ export function LoginScreen() {
 
           {activeMethod === 'qr' ? (
             <QrCodeView
-              onSuccess={(pubkey) => {
-                setAuth(pubkey, 'qr')
+              onSuccess={(pubkey, account) => {
+                setAuth(pubkey, 'qr', account)
                 navigate('/')
               }}
               onCancel={() => handleCancel('qr')}

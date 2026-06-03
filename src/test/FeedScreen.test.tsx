@@ -15,9 +15,24 @@ const mockComicEvent: NostrEvent = {
     ['d', 'dragon-ball'],
     ['title', 'Dragon Ball'],
     ['author', 'Toriyama'],
+    ['t', 'action'],
   ],
   content: '',
   sig: 'sig1',
+}
+
+const mockOtherComicEvent: NostrEvent = {
+  id: 'ev2',
+  pubkey: 'pubkey2',
+  kind: 30040,
+  created_at: 1700000100,
+  tags: [
+    ['d', 'naruto'],
+    ['title', 'Naruto'],
+    ['t', 'shonen'],
+  ],
+  content: '',
+  sig: 'sig2',
 }
 
 let mockObservableState: NostrEvent[] | null = []
@@ -46,13 +61,18 @@ vi.mock('../stores/authStore', () => ({
 }))
 
 vi.mock('../stores/blossomStore', () => ({
+  DEFAULT_BLOSSOM_SERVERS: ['https://blossom.primal.net', 'https://blossom.band', 'https://cdn.satellite.earth'],
   useBlossomStore: (
-    sel: (s: { primaryServer: () => string | undefined; cachedHashes: Record<string, string> }) => unknown,
-  ) => sel({ primaryServer: () => 'https://blossom.example', cachedHashes: {} }),
+    sel: (s: {
+      servers: { url: string }[]
+      primaryServer: () => string | undefined
+      cachedHashes: Record<string, string>
+    }) => unknown,
+  ) => sel({ servers: [], primaryServer: () => 'https://blossom.example', cachedHashes: {} }),
 }))
 
 function Wrapper({ children }: { children: React.ReactNode }) {
-  return <MemoryRouter>{children}</MemoryRouter>
+  return <MemoryRouter initialEntries={['/feed']}>{children}</MemoryRouter>
 }
 
 describe('FeedScreen', () => {
@@ -76,6 +96,19 @@ describe('FeedScreen', () => {
     mockObservableState = [mockComicEvent]
     render(<FeedScreen />, { wrapper: Wrapper })
     expect(screen.getByText('Dragon Ball')).toBeInTheDocument()
+  })
+
+  it('filters comics by tag query param', () => {
+    mockObservableState = [mockComicEvent, mockOtherComicEvent]
+    render(
+      <MemoryRouter initialEntries={['/feed?tag=action']}>
+        <FeedScreen />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Dragon Ball')).toBeInTheDocument()
+    expect(screen.queryByText('Naruto')).not.toBeInTheDocument()
+    expect(screen.getByText('action')).toBeInTheDocument()
   })
 
   it('clicking Follows tab shows follows empty state when no contacts', async () => {

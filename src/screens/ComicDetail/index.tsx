@@ -26,8 +26,9 @@ function parseTag(event: NostrEvent, name: string): string {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
 }
 
-function parseTagAt(event: NostrEvent, name: string, index: number): string {
-  return event.tags.find((tag) => tag[0] === name)?.[index] ?? ''
+function parseTagTail(event: NostrEvent, name: string, startIndex: number): string[] {
+  const tag = event.tags.find((entry) => entry[0] === name)
+  return tag ? tag.slice(startIndex).filter(Boolean) : []
 }
 
 function parseAnyTag(event: NostrEvent, names: string[]): string {
@@ -61,6 +62,9 @@ function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null
     title: parseTag(event, 'title') || dTag,
     pageHashes: pageUploads.map((upload) => upload.hash),
     pageServers: pageUploads.map((upload) => upload.server),
+    pageServerLists: event.tags
+      .filter((tag) => tag[0] === 'page')
+      .map((tag) => tag.slice(2).filter(Boolean)),
     blossomServer: parseTag(event, 'blossom') || pageUploads[0]?.server || '',
     publishedAt: event.created_at ?? 0,
     eventId: event.id,
@@ -71,7 +75,11 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
   const dTag = parseTag(event, 'd')
   if (!dTag) return null
   const coverHash = parseAnyTag(event, ['cover', 'cover_hash', 'image'])
-  const coverServer = parseTagAt(event, 'cover', 2) || parseTagAt(event, 'image', 2) || ''
+  const coverServers = [
+    ...parseTagTail(event, 'cover', 2),
+    ...parseTagTail(event, 'image', 2),
+  ]
+  const coverServer = coverServers[0] || ''
   return {
     id: event.id,
     pubkey: event.pubkey,
@@ -81,6 +89,7 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
     description: parseTag(event, 'description') || event.content || '',
     coverHash,
     coverServer,
+    coverServers,
     blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
     tags: event.tags.filter((t) => t[0] === 't').map((t) => t[1]).filter(Boolean),
     eventId: event.id,
@@ -222,6 +231,10 @@ export function ComicDetailScreen() {
       .slice()
       .sort((a, b) => chapterNumber(a.dTag) - chapterNumber(b.dTag))
   }, [chaptersForComic, dTag])
+  const visibleTags = useMemo(
+    () => Array.from(new Set((comic?.tags ?? []).map((tag) => tag.trim()).filter(Boolean))),
+    [comic?.tags],
+  )
 
   const server = comic?.coverServer || comic?.blossomServer || primaryServer()
   const blossomServers = useMemo(() => {
@@ -253,7 +266,7 @@ export function ComicDetailScreen() {
       for (const entry of blossomServers) {
         let ok = 0
         for (const asset of entry.assets) {
-          const reachable = await probeBlossomAssetExists(`${asset.server}/blob/${asset.hash}`)
+          const reachable = await probeBlossomAssetExists(`${asset.server}/${asset.hash}`)
           if (cancelled) return
           if (reachable) ok += 1
         }
@@ -322,12 +335,24 @@ export function ComicDetailScreen() {
     )
     if (!confirmed) return
 
+    const nextSavedATags = comicATag ? savedATags.filter((tag) => tag !== comicATag) : savedATags
+    if (saved && comicATag) {
+      removeFromLibrary(comicATag)
+    }
+
     removeComic(comic.dTag)
     removeChaptersForComic(comic.dTag)
     removeProgressForComic(comic.dTag)
     navigate('/')
 
     try {
+      if (saved && myPubkey) {
+        await service.publishLibraryList(
+          nextSavedATags,
+          { secretKey: secretKey ?? undefined, pubkey: myPubkey },
+        )
+      }
+
       const template = {
         kind: 5 as const,
         content: `Deleted from Mangatsu: ${comic.title}`,
@@ -385,7 +410,12 @@ export function ComicDetailScreen() {
 
         {comic ? (
           <header className="flex gap-4 items-end">
-              <CoverImage hash={comic.coverHash} server={server} title={comic.title} />
+              <CoverImage
+                hash={comic.coverHash}
+                server={server}
+                servers={comic.coverServers}
+                title={comic.title}
+              />
             <div className="flex-1 min-w-0">
               <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">
                 {comic.author || 'Unknown author'}
@@ -396,6 +426,19 @@ export function ComicDetailScreen() {
               <p className="mt-1 text-sm text-zinc-400">
                 {chapters.length} chapter{chapters.length !== 1 ? 's' : ''}
               </p>
+              {visibleTags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {visibleTags.map((tag) => (
+                    <Link
+                      key={tag}
+                      to={`/feed?tag=${encodeURIComponent(tag)}`}
+                      className="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs font-medium text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+                    >
+                      #{tag}
+                    </Link>
+                  ))}
+                </div>
+              )}
               <div className="mt-3 flex gap-2 flex-wrap">
                 {isForeign && !addedToLibrary && (
                   <button
@@ -578,16 +621,27 @@ export function ComicDetailScreen() {
 function CoverImage({
   hash,
   server,
+  servers,
   title,
 }: {
   hash: string
   server: string | undefined
+  servers?: string[]
   title: string
 }) {
   const className =
     'aspect-[2/3] w-20 flex-shrink-0 rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
   if (!hash) return <div className={className} />
-  return <BlossomImage hash={hash} server={server} alt={title} loading="lazy" className={className} />
+  return (
+    <BlossomImage
+      hash={hash}
+      server={server}
+      servers={servers}
+      alt={title}
+      loading="lazy"
+      className={className}
+    />
+  )
 }
 
 function TrashIcon() {

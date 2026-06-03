@@ -1,4 +1,4 @@
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ReaderScreen } from '../screens/Reader'
@@ -67,6 +67,7 @@ vi.mock('../stores/readStore', () => ({
 }))
 
 vi.mock('../stores/blossomStore', () => ({
+  DEFAULT_BLOSSOM_SERVERS: ['https://blossom.primal.net', 'https://blossom.band', 'https://cdn.satellite.earth'],
   useBlossomStore: (sel: (s: {
     servers: unknown[]
     cachedHashes: Record<string, string>
@@ -135,20 +136,80 @@ describe('ReaderScreen — page rendering', () => {
     mockChapters = [mockChapter1, mockChapter2]
     mockPrimaryServer = vi.fn(() => 'https://blossom.example')
     mockCachedHashes = {}
+
+    class MockImage {
+      onload: null | (() => void) = null
+      onerror: null | (() => void) = null
+
+      set src(_value: string) {
+        queueMicrotask(() => this.onload?.())
+      }
+    }
+
+    vi.stubGlobal('Image', MockImage)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, status: 200 } as Response)),
+    )
   })
 
-  it('renders one img per page hash', () => {
-    renderReader()
-    const images = screen.getAllByRole('img')
-    expect(images).toHaveLength(mockChapter1.pageHashes.length)
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
-  it('resolves page URLs via chapter blossomServer', () => {
+  it('renders one img per page hash', async () => {
     renderReader()
-    const images = screen.getAllByRole('img')
-    expect(images[0]).toHaveAttribute('src', 'https://blossom.example/blob/hash1')
-    expect(images[1]).toHaveAttribute('src', 'https://blossom.example/blob/hash2')
-    expect(images[2]).toHaveAttribute('src', 'https://blossom.example/blob/hash3')
+    await waitFor(() => {
+      expect(screen.getAllByRole('img')).toHaveLength(mockChapter1.pageHashes.length)
+    })
+  })
+
+  it('resolves page URLs via chapter blossomServer', async () => {
+    renderReader()
+    await waitFor(() => {
+      const images = screen.getAllByRole('img')
+      expect(images[0]).toHaveAttribute('src', 'https://blossom.example/hash1')
+      expect(images[1]).toHaveAttribute('src', 'https://blossom.example/hash2')
+      expect(images[2]).toHaveAttribute('src', 'https://blossom.example/hash3')
+    })
+  })
+
+  it('chooses the fastest available blossom server for a page', async () => {
+    mockChapters = [
+      {
+        ...mockChapter1,
+        blossomServer: 'https://slow.example',
+        pageServerLists: [
+          ['https://slow.example', 'https://fast.example'],
+          ['https://slow.example'],
+          ['https://slow.example'],
+        ],
+        pageServers: ['https://slow.example', 'https://slow.example', 'https://slow.example'],
+      },
+      mockChapter2,
+    ]
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.startsWith('https://fast.example/')) {
+          return { ok: true, status: 200 } as Response
+        }
+        if (url.startsWith('https://slow.example/')) {
+          await new Promise((resolve) => setTimeout(resolve, 25))
+          return { ok: true, status: 200 } as Response
+        }
+        return { ok: false, status: 404 } as Response
+      }),
+    )
+
+    renderReader()
+
+    await waitFor(() => {
+      const images = screen.getAllByRole('img')
+      expect(images[0]).toHaveAttribute('src', 'https://fast.example/hash1')
+    })
   })
 
   it('eager loads cached pages and lazily loads uncached pages', () => {
@@ -171,13 +232,23 @@ describe('ReaderScreen — page rendering', () => {
     vi.stubGlobal('Image', MockImage)
     try {
       renderReader()
-      expect(preloaded).toContain('https://blossom.example/blob/hash2')
+      expect(preloaded).toContain('https://blossom.example/hash2')
     } finally {
       vi.unstubAllGlobals()
     }
   })
 
-  it('restores the saved page on entry', () => {
+  it('ignores cached URLs from a different Blossom server', async () => {
+    mockCachedHashes = { hash1: 'https://old.example/hash1' }
+    mockChapters = [{ ...mockChapter1, blossomServer: 'https://new.example' }, mockChapter2]
+    renderReader()
+    await waitFor(() => {
+      const images = screen.getAllByRole('img')
+      expect(images[0]).toHaveAttribute('src', 'https://new.example/hash1')
+    })
+  })
+
+  it('restores the saved page on entry', async () => {
     mockProgress['one-piece/chapter-1'] = {
       id: 'progress-1',
       chapterDTag: 'one-piece/chapter-1',
@@ -194,10 +265,12 @@ describe('ReaderScreen — page rendering', () => {
     try {
       renderReader()
 
-      const images = screen.getAllByRole('img')
-      expect(images[1]).toHaveAttribute('src', 'https://blossom.example/blob/hash2')
-      expect(scrollIntoView).toHaveBeenCalled()
-      expect(screen.getByText('2 / 3')).toBeInTheDocument()
+      await waitFor(() => {
+        const images = screen.getAllByRole('img')
+        expect(images[1]).toHaveAttribute('src', 'https://blossom.example/hash2')
+        expect(scrollIntoView).toHaveBeenCalled()
+        expect(screen.getByText('2 / 3')).toBeInTheDocument()
+      })
     } finally {
       Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
         value: original,
@@ -207,15 +280,17 @@ describe('ReaderScreen — page rendering', () => {
     }
   })
 
-  it('falls back to primaryServer when chapter has no blossomServer', () => {
+  it('falls back to primaryServer when chapter has no blossomServer', async () => {
     mockChapters = [
       { ...mockChapter1, blossomServer: '' },
       mockChapter2,
     ]
     mockPrimaryServer = vi.fn(() => 'https://fallback.example')
     renderReader()
-    const images = screen.getAllByRole('img')
-    expect(images[0]).toHaveAttribute('src', 'https://fallback.example/blob/hash1')
+    await waitFor(() => {
+      const images = screen.getAllByRole('img')
+      expect(images[0]).toHaveAttribute('src', 'https://fallback.example/hash1')
+    })
   })
 
   it('shows chapter title in header', () => {

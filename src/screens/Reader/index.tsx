@@ -6,10 +6,7 @@ import { useBlossomStore } from '@/stores/blossomStore'
 import { usePageObserver } from './usePageObserver'
 import { useProgressPublisher } from './useProgressPublisher'
 import { usePagePreloader } from './usePagePreloader'
-
-function resolvePageUrl(hash: string, server: string): string {
-  return `${server.replace(/\/$/, '')}/blob/${hash}`
-}
+import { BlossomImage } from '@/components/BlossomImage'
 
 function chapterNumber(dTag: string): number {
   const match = dTag.match(/(\d+(?:\.\d+)?)$/)
@@ -48,11 +45,17 @@ export function ReaderScreen() {
     () =>
       chapter
         ? chapter.pageHashes.map((h, idx) => {
+            const pageServerList = chapter.pageServerLists?.[idx] ?? []
             const pageServer = chapter.pageServers?.[idx] || server
+            const explicitServers = [...new Set([...(pageServerList ?? []), pageServer].filter(Boolean))]
             const cachedUrl = cachedHashes[h] || ''
             return {
-              url: cachedUrl || resolvePageUrl(h, pageServer),
-              isCached: cachedUrl.length > 0,
+              hash: h,
+              server: pageServer,
+              servers: explicitServers,
+              url: `${pageServer.replace(/\/$/, '')}/${h}`,
+              cachedUrl,
+              isCached: Boolean(cachedUrl),
             }
           })
         : [],
@@ -140,10 +143,14 @@ export function ReaderScreen() {
       {/* Pages */}
       <main className="mx-auto max-w-2xl">
         {pageUrls.map((page, idx) => (
-          <img
-            key={page.url}
-            ref={(el) => { pageRefs[idx].current = el }}
-            src={page.url}
+          <BlossomImage
+            key={page.hash}
+            ref={(el) => {
+              pageRefs[idx].current = el
+            }}
+            hash={page.hash}
+            server={page.server}
+            servers={page.servers}
             alt={`Page ${idx + 1}`}
             className="block w-full"
             loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}

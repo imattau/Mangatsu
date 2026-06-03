@@ -26,7 +26,7 @@ describe('BlossomService.upload', () => {
     const mockFile = new File(['data'], 'page.jpg', { type: 'image/jpeg' })
     ;(Actions.uploadBlob as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       sha256: 'abc123',
-      url: 'https://server/blob/abc123',
+      url: 'https://server/abc123',
       size: 4,
       type: 'image/jpeg',
       created: 0,
@@ -34,7 +34,7 @@ describe('BlossomService.upload', () => {
 
     const result = await service.upload(mockFile, 'https://blossom.example.com', mockSigner as never)
 
-    expect(result).toEqual({ sha256: 'abc123', url: 'https://server/blob/abc123' })
+    expect(result).toEqual({ sha256: 'abc123', url: 'https://server/abc123' })
     expect(Actions.uploadBlob).toHaveBeenCalledWith(
       'https://blossom.example.com',
       mockFile,
@@ -64,7 +64,7 @@ describe('BlossomService.upload', () => {
   it('resolveUrl builds correct URL', () => {
     const service2 = new BlossomService()
     expect(service2.resolveUrl('abc123', 'https://blossom.example.com')).toBe(
-      'https://blossom.example.com/blob/abc123',
+      'https://blossom.example.com/abc123',
     )
   })
 })

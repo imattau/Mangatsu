@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useNostr } from '@/context/NostrContext'
+import { useAuthStore } from '@/stores/authStore'
+import { useLibraryStore } from '@/stores/libraryStore'
 import { usePublishQueueStore } from '@/stores/publishQueueStore'
 import type { MetadataFormValues } from './MetadataStep'
 import type { ChapterFormValues } from './ChapterStep'
@@ -28,6 +30,10 @@ export function PublishStep({
   onDone,
 }: PublishStepProps) {
   const { service } = useNostr()
+  const pubkey = useAuthStore((state) => state.pubkey)
+  const secretKey = useAuthStore((state) => state.secretKey)
+  const savedATags = useLibraryStore((state) => state.savedATags)
+  const addToLibrary = useLibraryStore((state) => state.add)
   const queueDraft = usePublishQueueStore((state) => state.queueDraft)
   const [status, setStatus] = useState<'review' | 'publishing' | 'done' | 'error'>('review')
   const [errorMsg, setErrorMsg] = useState('')
@@ -45,6 +51,18 @@ export function PublishStep({
       })
 
       await publishDraft(service, draft)
+      if (pubkey) {
+        const comicATag = `30040:${pubkey}:${draft.comicDTag}`
+        addToLibrary(comicATag)
+        try {
+          await service.publishLibraryList(
+            [...savedATags, comicATag],
+            { secretKey: secretKey ?? undefined, pubkey },
+          )
+        } catch {
+          // Keep local saved state even if the library publish fails.
+        }
+      }
       setStatus('done')
       onDone(draft.comicDTag)
     } catch (err) {

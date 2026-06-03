@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { BrandMark } from '@/components/BrandMark'
 import { HeaderNav } from '@/components/HeaderNav'
 import { useEventStore, useObservableState } from 'applesauce-react/hooks'
@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { DEFAULT_RELAYS, useRelayStore } from '@/stores/relayStore'
 import type { Comic } from '@/types'
+import { BlossomImage } from '@/components/BlossomImage'
 
 // ---------------------------------------------------------------------------
 // Helpers (same as LibraryScreen)
@@ -19,8 +20,9 @@ function parseTag(event: NostrEvent, name: string) {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
 }
 
-function parseTagAt(event: NostrEvent, name: string, index: number) {
-  return event.tags.find((tag) => tag[0] === name)?.[index] ?? ''
+function parseTagTail(event: NostrEvent, name: string, startIndex: number) {
+  const tag = event.tags.find((entry) => entry[0] === name)
+  return tag ? tag.slice(startIndex).filter(Boolean) : []
 }
 
 function parseAnyTag(event: NostrEvent, names: string[]) {
@@ -34,7 +36,11 @@ function parseAnyTag(event: NostrEvent, names: string[]) {
 function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
   const dTag = parseTag(event, 'd')
   if (!dTag) return null
-  const coverServer = parseTagAt(event, 'cover', 2) || parseTagAt(event, 'image', 2) || ''
+  const coverServers = [
+    ...parseTagTail(event, 'cover', 2),
+    ...parseTagTail(event, 'image', 2),
+  ]
+  const coverServer = coverServers[0] || ''
   return {
     id: event.id,
     pubkey: event.pubkey,
@@ -45,14 +51,10 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
     coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
     blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
     coverServer,
+    coverServers,
     tags: event.tags.filter((t) => t[0] === 't').map((t) => t[1]).filter(Boolean),
     eventId: event.id,
   }
-}
-
-function coverUrl(hash: string, server: string | undefined) {
-  if (!hash || !server) return null
-  return `${server.replace(/\/$/, '')}/blob/${hash}`
 }
 
 function parseFollowedPubkeys(event: NostrEvent): string[] {
@@ -69,6 +71,7 @@ type Tab = 'global' | 'follows'
 export function FeedScreen() {
   const { service, syncGeneration } = useNostr()
   const eventStore = useEventStore()
+  const [searchParams] = useSearchParams()
   const pubkey = useAuthStore((s) => s.pubkey)
   const primaryServer = useBlossomStore((s) => s.primaryServer)
   const relayUrls = useRelayStore((s) => s.relays)
@@ -125,6 +128,7 @@ export function FeedScreen() {
   const followsEvents = useObservableState(followsTimeline$) ?? EMPTY_EVENTS
 
   const server = primaryServer()
+  const activeTag = searchParams.get('tag')?.trim() ?? ''
 
   const globalComics = useMemo(
     () =>
@@ -144,21 +148,25 @@ export function FeedScreen() {
     [followsEvents, server],
   )
 
-  const activeComics = activeTab === 'global' ? globalComics : followsComics
+  const activeComics = useMemo(() => {
+    const comics = activeTab === 'global' ? globalComics : followsComics
+    if (!activeTag) return comics
+    return comics.filter((comic) => comic.tags.includes(activeTag))
+  }, [activeTag, activeTab, followsComics, globalComics])
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 py-4 text-zinc-100">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3 overflow-hidden">
             <BrandMark size="sm" showLabel={false} />
-            <div>
+            <div className="min-w-0">
               <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
-              <h1 className="mt-2 text-2xl font-semibold tracking-tight">Feed</h1>
+              <h1 className="mt-2 truncate text-2xl font-semibold tracking-tight">Feed</h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <HeaderNav />
           </div>
         </header>
@@ -179,6 +187,21 @@ export function FeedScreen() {
             </button>
           ))}
         </div>
+
+        {activeTag ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm">
+            <span className="text-zinc-500">Tag filter:</span>
+            <span className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-zinc-100">
+              {activeTag}
+            </span>
+            <Link
+              to="/feed"
+              className="ml-auto text-zinc-400 transition hover:text-zinc-100"
+            >
+              Clear
+            </Link>
+          </div>
+        ) : null}
 
         {/* Content */}
         {activeTab === 'follows' && followedPubkeys.length === 0 ? (
@@ -203,7 +226,10 @@ export function FeedScreen() {
                 to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
                 className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
               >
-                <ComicCover comic={comic} server={comic.coverServer || comic.blossomServer || server} />
+                <ComicCover
+                  comic={comic}
+                  server={comic.coverServer || comic.blossomServer || server}
+                />
                 <div className="px-0.5">
                   <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
                     {comic.title}
@@ -219,11 +245,16 @@ export function FeedScreen() {
 }
 
 function ComicCover({ comic, server }: { comic: Comic; server: string | undefined }) {
-  const cachedUrl = useBlossomStore((state) => state.cachedHashes[comic.coverHash] ?? '')
-  const url = coverUrl(comic.coverHash, server)
-  const imageUrl = cachedUrl || url
   const className =
     'aspect-[2/3] w-full rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
-  if (!imageUrl) return <div className={className} />
-  return <img src={imageUrl} alt={comic.title} loading="lazy" className={className} />
+  if (!comic.coverHash) return <div className={className} />
+  return (
+    <BlossomImage
+      hash={comic.coverHash}
+      server={server}
+      servers={comic.coverServers}
+      alt={comic.title}
+      className={className}
+    />
+  )
 }
