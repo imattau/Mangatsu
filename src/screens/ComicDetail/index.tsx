@@ -1,15 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEventStore, useObservableState } from 'applesauce-react/hooks'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { of } from 'rxjs'
 import { useNostr } from '@/context/NostrContext'
 import { useAuthStore } from '@/stores/authStore'
+import { useLibraryStore } from '@/stores/libraryStore'
 import { ZapButton } from '@/components/ZapButton'
 import { useComicStore } from '@/stores/comicStore'
 import { useReadStore } from '@/stores/readStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import type { Chapter, Comic } from '@/types'
+import { BlossomImage } from '@/components/BlossomImage'
+import {
+  collectComicBlossomAssets,
+  groupBlossomAssetsByServer,
+  probeBlossomAssetExists,
+} from '@/lib/blossom'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -90,12 +97,31 @@ function chapterLabel(dTag: string): string {
   return num > 0 ? `Chapter ${num}` : dTag.split('/').pop() ?? dTag
 }
 
-function coverUrl(hash: string, server: string | undefined): string | null {
-  if (!hash || !server) return null
-  return `${server.replace(/\/$/, '')}/blob/${hash}`
+function comicDeleteTags(comic: Comic, chapters: Chapter[]): string[][] {
+  const tags: string[][] = [
+    ['a', `30040:${comic.pubkey}:${comic.dTag}`],
+  ]
+
+  const kinds = new Set(['30040'])
+  for (const chapter of chapters) {
+    tags.push(['a', `30041:${chapter.pubkey}:${chapter.dTag}`])
+    kinds.add('30041')
+  }
+
+  for (const kind of kinds) {
+    tags.push(['k', kind])
+  }
+
+  return tags
 }
 
 const EMPTY_EVENTS: NostrEvent[] = []
+
+interface ServerAvailability {
+  status: 'checking' | 'available' | 'partial' | 'missing'
+  total: number
+  ok: number
+}
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -105,16 +131,25 @@ export function ComicDetailScreen() {
   const { dTag } = useParams<{ dTag: string }>()
   const [searchParams] = useSearchParams()
   const foreignPubkey = searchParams.get('pubkey')
+  const navigate = useNavigate()
 
   const { service, syncGeneration } = useNostr()
   const eventStore = useEventStore()
 
   const myPubkey = useAuthStore((s) => s.pubkey)
+  const secretKey = useAuthStore((s) => s.secretKey)
+  const savedATags = useLibraryStore((s) => s.savedATags)
+  const addToLibrary = useLibraryStore((s) => s.add)
+  const removeFromLibrary = useLibraryStore((s) => s.remove)
+  const isInLibrary = useLibraryStore((s) => s.isIn)
   const comics = useComicStore((s) => s.comics)
   const setComic = useComicStore((s) => s.setComic)
   const setChapter = useComicStore((s) => s.setChapter)
+  const removeComic = useComicStore((s) => s.removeComic)
+  const removeChaptersForComic = useComicStore((s) => s.removeChaptersForComic)
   const chaptersForComic = useComicStore((s) => s.chaptersForComic)
   const progress = useReadStore((s) => s.progress)
+  const removeProgressForComic = useReadStore((s) => s.removeProgressForComic)
   const primaryServer = useBlossomStore((s) => s.primaryServer)
 
   const [addedToLibrary, setAddedToLibrary] = useState(false)
@@ -189,8 +224,123 @@ export function ComicDetailScreen() {
   }, [chaptersForComic, dTag])
 
   const server = comic?.coverServer || comic?.blossomServer || primaryServer()
+  const blossomServers = useMemo(() => {
+    if (!comic) return []
+    return groupBlossomAssetsByServer(collectComicBlossomAssets(comic, chapters))
+  }, [chapters, comic])
+  const [blossomAvailability, setBlossomAvailability] = useState<Record<string, ServerAvailability>>({})
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!comic || blossomServers.length === 0) {
+      setBlossomAvailability({})
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setBlossomAvailability(
+      Object.fromEntries(
+        blossomServers.map((entry) => [
+          entry.server,
+          { status: 'checking', total: entry.assets.length, ok: 0 } satisfies ServerAvailability,
+        ]),
+      ),
+    )
+
+    async function run() {
+      for (const entry of blossomServers) {
+        let ok = 0
+        for (const asset of entry.assets) {
+          const reachable = await probeBlossomAssetExists(`${asset.server}/blob/${asset.hash}`)
+          if (cancelled) return
+          if (reachable) ok += 1
+        }
+
+        if (cancelled) return
+        setBlossomAvailability((current) => ({
+          ...current,
+          [entry.server]: {
+            status: ok === entry.assets.length ? 'available' : ok > 0 ? 'partial' : 'missing',
+            total: entry.assets.length,
+            ok,
+          },
+        }))
+      }
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [blossomServers, comic])
+
+  const allBlossomAssetsReachable =
+    blossomServers.length > 0 &&
+    blossomServers.every((entry) => blossomAvailability[entry.server]?.status === 'available')
+  const isCheckingBlossomAssets =
+    blossomServers.length > 0 &&
+    blossomServers.some((entry) => !blossomAvailability[entry.server] || blossomAvailability[entry.server]?.status === 'checking')
 
   const isForeign = foreignPubkey !== null && foreignPubkey !== myPubkey
+
+  const comicATag = comic ? `30040:${comic.pubkey}:${comic.dTag}` : ''
+  const saved = comicATag ? isInLibrary(comicATag) : false
+
+  async function handleSave() {
+    if (!comic || !myPubkey || !comicATag) return
+    addToLibrary(comicATag)
+    try {
+      await service.publishLibraryList(
+        [...savedATags, comicATag],
+        { secretKey: secretKey ?? undefined, pubkey: myPubkey },
+      )
+    } catch {
+      // fire-and-forget
+    }
+  }
+
+  async function handleUnsave() {
+    if (!comic || !myPubkey || !comicATag) return
+    removeFromLibrary(comicATag)
+    try {
+      await service.publishLibraryList(
+        savedATags.filter((t) => t !== comicATag),
+        { secretKey: secretKey ?? undefined, pubkey: myPubkey },
+      )
+    } catch {
+      // fire-and-forget
+    }
+  }
+
+  async function handleDeleteComic() {
+    if (!comic || !dTag) return
+    const confirmed = window.confirm(
+      `Delete "${comic.title}"? This will publish a Nostr deletion request for the comic and its chapters.`,
+    )
+    if (!confirmed) return
+
+    removeComic(comic.dTag)
+    removeChaptersForComic(comic.dTag)
+    removeProgressForComic(comic.dTag)
+    navigate('/')
+
+    try {
+      const template = {
+        kind: 5 as const,
+        content: `Deleted from Mangatsu: ${comic.title}`,
+        tags: comicDeleteTags(comic, chapters),
+      }
+      const signed = await service.eventFactory.build(template)
+      if (signed) {
+        await service.publishEvent(signed as NostrEvent)
+      }
+    } catch {
+      // Deletion event failed to publish — local removal already done
+    }
+  }
 
   async function handleAddToLibrary() {
     if (!comic || !dTag) return
@@ -259,6 +409,26 @@ export function ComicDetailScreen() {
                 {comic.pubkey && comic.pubkey !== myPubkey && (
                   <ZapButton authorPubkey={comic.pubkey} />
                 )}
+                {isForeign && myPubkey && (
+                  <button
+                    type="button"
+                    onClick={() => void (saved ? handleUnsave() : handleSave())}
+                    className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                  >
+                    {saved ? 'Unsave' : 'Save'}
+                  </button>
+                )}
+                {comic.pubkey === myPubkey && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteComic()}
+                    className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-4 py-2 text-sm text-red-300 transition hover:border-red-700 hover:text-red-200"
+                    aria-label="Delete comic"
+                  >
+                    <TrashIcon />
+                    <span>Delete</span>
+                  </button>
+                )}
               </div>
               {addedToLibrary && (
                 <p className="mt-3 text-sm text-emerald-400">Added to your library</p>
@@ -269,6 +439,76 @@ export function ComicDetailScreen() {
           <header>
             <div className="h-6 w-40 rounded bg-zinc-800 animate-pulse" />
           </header>
+        )}
+
+        {blossomServers.length > 0 && (
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                  Blossom servers
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  {isCheckingBlossomAssets
+                    ? 'Probing declared comic assets for reachability.'
+                    : allBlossomAssetsReachable
+                      ? 'All declared comic assets are reachable.'
+                      : 'Some declared comic assets are missing or partial.'}
+                </p>
+              </div>
+              <div
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  isCheckingBlossomAssets
+                    ? 'border-zinc-700 bg-zinc-900/80 text-zinc-400'
+                    : allBlossomAssetsReachable
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                }`}
+              >
+                {isCheckingBlossomAssets ? 'Checking' : allBlossomAssetsReachable ? 'Available' : 'Incomplete'}
+              </div>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {blossomServers.map((entry) => {
+                const availability = blossomAvailability[entry.server]
+                const ready = availability?.status ?? 'checking'
+                return (
+                  <li
+                    key={entry.server}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-100">{entry.server}</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        {availability
+                          ? `${availability.ok}/${availability.total} assets reachable`
+                          : `${entry.assets.length} assets queued for check`}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                        ready === 'available'
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                          : ready === 'partial'
+                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                            : ready === 'missing'
+                              ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                              : 'border-zinc-700 bg-zinc-900/80 text-zinc-400'
+                      }`}
+                    >
+                      {ready === 'available'
+                        ? 'Available'
+                        : ready === 'partial'
+                          ? 'Partial'
+                          : ready === 'missing'
+                            ? 'Missing'
+                            : 'Checking'}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
         )}
 
         {chapters.length === 0 ? (
@@ -344,11 +584,29 @@ function CoverImage({
   server: string | undefined
   title: string
 }) {
-  const cachedUrl = useBlossomStore((state) => state.cachedHashes[hash] ?? '')
-  const url = coverUrl(hash, server)
-  const imageUrl = cachedUrl || url
   const className =
     'aspect-[2/3] w-20 flex-shrink-0 rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
-  if (!imageUrl) return <div className={className} />
-  return <img src={imageUrl} alt={title} loading="lazy" className={className} />
+  if (!hash) return <div className={className} />
+  return <BlossomImage hash={hash} server={server} alt={title} loading="lazy" className={className} />
+}
+
+function TrashIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18" />
+      <path d="M8 6V4h8v2" />
+      <path d="M6 6l1 14h10l1-14" />
+      <path d="M10 11v5" />
+      <path d="M14 11v5" />
+    </svg>
+  )
 }
