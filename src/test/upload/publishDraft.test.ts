@@ -39,10 +39,10 @@ describe('publishDraft', () => {
         firstPageObjectUrl: null,
       },
       pageUploads: [
-        { hash: 'hash1', server: 'https://blossom-a.example' },
-        { hash: 'hash2', server: 'https://blossom-b.example' },
+        { hash: 'hash1', servers: ['https://blossom-a.example', 'https://blossom-b.example'] },
+        { hash: 'hash2', servers: ['https://blossom-a.example'] },
       ],
-      coverUpload: { hash: 'cover-hash', server: 'https://blossom-cover.example' },
+      coverUpload: { hash: 'cover-hash', servers: ['https://blossom-a.example', 'https://blossom-cover.example'] },
     })
 
     expect(draft.comicDTag).toBe('test-comic')
@@ -51,14 +51,14 @@ describe('publishDraft', () => {
     expect(draft.events[0]).toMatchObject({
       kind: 30040,
       tags: expect.arrayContaining([
-        ['cover', 'cover-hash', 'https://blossom-cover.example'],
+        ['cover', 'cover-hash', 'https://blossom-a.example', 'https://blossom-cover.example'],
       ]),
     })
     expect(draft.events[1]).toMatchObject({
       kind: 30041,
       tags: expect.arrayContaining([
-        ['page', 'blossom://hash1', 'https://blossom-a.example'],
-        ['page', 'blossom://hash2', 'https://blossom-b.example'],
+        ['page', 'blossom://hash1', 'https://blossom-a.example', 'https://blossom-b.example'],
+        ['page', 'blossom://hash2', 'https://blossom-a.example'],
       ]),
     })
   })

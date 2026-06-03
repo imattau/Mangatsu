@@ -6,7 +6,7 @@ import { slugify } from './slugify'
 
 export interface UploadArtifact {
   hash: string
-  server: string
+  servers: string[]
 }
 
 export interface PublishDraftInput {
@@ -47,7 +47,7 @@ export async function buildPublishDraft(
     if (input.metadata.authorPubkey) comicTags.push(['author_pubkey', input.metadata.authorPubkey])
     if (input.metadata.description) comicTags.push(['description', input.metadata.description])
     if (input.coverUpload) {
-      comicTags.push(['cover', input.coverUpload.hash, input.coverUpload.server])
+      comicTags.push(['cover', input.coverUpload.hash, ...input.coverUpload.servers])
     }
     for (const t of input.metadata.tags.split(',').map((s) => s.trim()).filter(Boolean)) {
       comicTags.push(['t', t])
@@ -67,7 +67,7 @@ export async function buildPublishDraft(
   const chapterTags: string[][] = [
     ['d', chapterDTag],
     ['title', input.chapter.chapterTitle],
-    ...input.pageUploads.map((upload) => ['page', `blossom://${upload.hash}`, upload.server]),
+    ...input.pageUploads.map((upload) => ['page', `blossom://${upload.hash}`, ...upload.servers]),
   ]
   const chapterTemplate = {
     kind: 30041,
