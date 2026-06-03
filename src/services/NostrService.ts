@@ -214,6 +214,47 @@ export class NostrService {
     return responses
   }
 
+  subscribeToLibraryList(
+    pubkey: string,
+    onEvent: (event: NostrEvent) => void,
+  ): { unsubscribe: () => void } {
+    const source$ = this.relayPool.subscription(
+      this.getRelays(),
+      [{ kinds: [30003], authors: [pubkey], '#d': ['mangatsu-library'] }],
+      { eventStore: this.eventStore },
+    )
+    const sub = source$.subscribe({
+      next: (event) => {
+        this.eventStore.add(event)
+        onEvent(event)
+      },
+    })
+    return { unsubscribe: () => sub.unsubscribe() }
+  }
+
+  async publishLibraryList(
+    aTags: string[],
+    opts: { secretKey?: Uint8Array; pubkey: string },
+  ): Promise<void> {
+    const { encodeLibraryList, encryptToSelf } = await import('@/lib/nip51')
+    const plaintext = encodeLibraryList(aTags)
+    const windowNostr = typeof window !== 'undefined'
+      ? (window as unknown as { nostr?: import('@/lib/nip51').Nip44Signer }).nostr
+      : undefined
+    const content = await encryptToSelf(plaintext, {
+      windowNostr,
+      secretKey: opts.secretKey,
+      pubkey: opts.pubkey,
+    })
+    const template = {
+      kind: 30003 as const,
+      content,
+      tags: [['d', 'mangatsu-library']],
+    }
+    const signed = await this.eventFactory.build(template)
+    if (signed) await this.publishEvent(signed as NostrEvent)
+  }
+
   async publishBlossomServerList(serverUrls: string[]): Promise<void> {
     const account = this.accountManager.active
     if (!account) return
