@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLibraryStore } from '@/stores/libraryStore'
 import { Link } from 'react-router-dom'
 import { useEventStore, useObservableState } from 'applesauce-react/hooks'
 import { BrandMark } from '@/components/BrandMark'
@@ -13,6 +14,7 @@ import { usePublishQueueStore, type PendingPublishDraft } from '@/stores/publish
 import { useReadStore } from '@/stores/readStore'
 import type { Comic } from '@/types'
 import { publishDraft } from '@/screens/Upload/publishDraft'
+import { BlossomImage } from '@/components/BlossomImage'
 
 const COMIC_FILTER = (pubkey: string) => [{ kinds: [30040], authors: [pubkey] }]
 const EMPTY_EVENTS: NostrEvent[] = []
@@ -91,13 +93,6 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
   }
 }
 
-function coverUrl(hash: string, server: string | undefined) {
-  if (!hash || !server) {
-    return null
-  }
-  return `${server.replace(/\/$/, '')}/blob/${hash}`
-}
-
 function chapterLabel(dTag: string) {
   const match = dTag.match(/(\d+(?:\.\d+)?)/)
   return match ? `Ch. ${match[1]}` : `Ch. ${dTag}`
@@ -135,6 +130,18 @@ export function LibraryScreen() {
       }
     }
   }, [liveComicEvents, primaryServer, setComic])
+
+  const savedATags = useLibraryStore((s) => s.savedATags)
+  const savedComics = useMemo(
+    () =>
+      savedATags
+        .map((aTag) => {
+          const [, , dTag] = aTag.split(':')
+          return dTag ? comics[dTag] ?? null : null
+        })
+        .filter((c): c is Comic => c !== null),
+    [savedATags, comics],
+  )
 
   const allComics = useMemo(
     () => Object.values(comics).sort((a, b) => a.title.localeCompare(b.title)),
@@ -261,7 +268,7 @@ export function LibraryScreen() {
           </section>
         ) : null}
 
-        {allComics.length === 0 && queuedDrafts.length === 0 ? (
+        {allComics.length === 0 && queuedDrafts.length === 0 && savedATags.length === 0 ? (
           <section className="flex min-h-[50vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
             <p className="text-lg font-medium text-zinc-100">No comics yet</p>
             <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
@@ -275,32 +282,68 @@ export function LibraryScreen() {
               </Link>
           </section>
         ) : (
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">All Comics</p>
-              <p className="text-xs text-zinc-600">{allComics.length} total</p>
-            </div>
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-              {allComics.map((comic) => (
-                <Link
-                  key={comic.dTag}
-                  to={`/comic/${comic.dTag}`}
-                  className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
-                >
-                  <CoverImage
-                    comic={comic}
-                    size="grid"
-                    server={comic.coverServer || comic.blossomServer || primaryServer()}
-                  />
-                  <div className="px-0.5">
-                    <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
-                      {comic.title}
-                    </p>
+          <>
+            {allComics.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">My Comics</p>
+                  <p className="text-xs text-zinc-600">{allComics.length} total</p>
+                </div>
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                  {allComics.map((comic) => (
+                    <Link
+                      key={comic.dTag}
+                      to={`/comic/${comic.dTag}`}
+                      className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
+                    >
+                      <CoverImage
+                        comic={comic}
+                        size="grid"
+                        server={comic.coverServer || comic.blossomServer || primaryServer()}
+                      />
+                      <div className="px-0.5">
+                        <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
+                          {comic.title}
+                        </p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+            {savedATags.length > 0 && (
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Saved</p>
+                  <p className="text-xs text-zinc-600">{savedATags.length} saved</p>
+                </div>
+                {savedComics.length === 0 ? (
+                  <p className="text-sm text-zinc-500">Loading saved comics…</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                    {savedComics.map((comic) => (
+                      <Link
+                        key={comic.dTag}
+                        to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
+                        className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
+                      >
+                        <CoverImage
+                          comic={comic}
+                          size="grid"
+                          server={comic.coverServer || comic.blossomServer || primaryServer()}
+                        />
+                        <div className="px-0.5">
+                          <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
+                            {comic.title}
+                          </p>
+                        </div>
+                      </Link>
+                    ))}
                   </div>
-                </Link>
-              ))}
-            </div>
-          </section>
+                )}
+              </section>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -361,17 +404,22 @@ function CoverImage({
   size: 'hero' | 'grid'
   server: string | undefined
 }) {
-  const cachedUrl = useBlossomStore((state) => state.cachedHashes[comic.coverHash] ?? '')
-  const url = coverUrl(comic.coverHash, server)
-  const imageUrl = cachedUrl || url
   const className =
     size === 'hero'
       ? 'aspect-[2/3] w-full max-w-[120px] rounded-2xl object-cover shadow-lg shadow-black/20 sm:max-w-none'
       : 'aspect-[2/3] w-full rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
 
-  if (!imageUrl) {
+  if (!comic.coverHash) {
     return <div className={className} />
   }
 
-  return <img src={imageUrl} alt={comic.title} loading="lazy" className={className} />
+  return (
+    <BlossomImage
+      hash={comic.coverHash}
+      server={server}
+      alt={comic.title}
+      loading="lazy"
+      className={className}
+    />
+  )
 }
