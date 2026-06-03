@@ -34,6 +34,7 @@ let mockChapters: Chapter[] = [mockChapter1, mockChapter2]
 const mockProgress: Record<string, ReadingProgress> = {}
 let mockSetProgress = vi.fn()
 let mockPrimaryServer = vi.fn(() => 'https://blossom.example')
+let mockCachedHashes: Record<string, string> = {}
 
 // Mutable nostr service stubs — replaced in publish tests
 let mockBuildFn = vi.fn().mockResolvedValue({ kind: 30301, tags: [], content: '', created_at: 0, pubkey: '' })
@@ -75,7 +76,7 @@ vi.mock('../stores/blossomStore', () => ({
   }) => unknown) =>
     sel({
       servers: [],
-      cachedHashes: {},
+      cachedHashes: mockCachedHashes,
       setServers: vi.fn(),
       setCachedHash: vi.fn(),
       primaryServer: mockPrimaryServer,
@@ -133,6 +134,7 @@ describe('ReaderScreen — page rendering', () => {
   beforeEach(() => {
     mockChapters = [mockChapter1, mockChapter2]
     mockPrimaryServer = vi.fn(() => 'https://blossom.example')
+    mockCachedHashes = {}
   })
 
   it('renders one img per page hash', () => {
@@ -147,6 +149,62 @@ describe('ReaderScreen — page rendering', () => {
     expect(images[0]).toHaveAttribute('src', 'https://blossom.example/blob/hash1')
     expect(images[1]).toHaveAttribute('src', 'https://blossom.example/blob/hash2')
     expect(images[2]).toHaveAttribute('src', 'https://blossom.example/blob/hash3')
+  })
+
+  it('eager loads cached pages and lazily loads uncached pages', () => {
+    mockCachedHashes = { hash2: 'blob://cached-hash2' }
+    renderReader()
+    const images = screen.getAllByRole('img')
+    expect(images[0]).toHaveAttribute('loading', 'eager')
+    expect(images[1]).toHaveAttribute('loading', 'eager')
+    expect(images[2]).toHaveAttribute('loading', 'lazy')
+  })
+
+  it('preloads the next uncached page', () => {
+    const preloaded: string[] = []
+    class MockImage {
+      set src(value: string) {
+        preloaded.push(value)
+      }
+    }
+
+    vi.stubGlobal('Image', MockImage)
+    try {
+      renderReader()
+      expect(preloaded).toContain('https://blossom.example/blob/hash2')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('restores the saved page on entry', () => {
+    mockProgress['one-piece/chapter-1'] = {
+      id: 'progress-1',
+      chapterDTag: 'one-piece/chapter-1',
+      page: 2,
+      updatedAt: 1700000000,
+    }
+    const scrollIntoView = vi.fn()
+    const original = HTMLElement.prototype.scrollIntoView
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: scrollIntoView,
+      configurable: true,
+    })
+
+    try {
+      renderReader()
+
+      const images = screen.getAllByRole('img')
+      expect(images[1]).toHaveAttribute('src', 'https://blossom.example/blob/hash2')
+      expect(scrollIntoView).toHaveBeenCalled()
+      expect(screen.getByText('2 / 3')).toBeInTheDocument()
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        value: original,
+        configurable: true,
+      })
+      delete mockProgress['one-piece/chapter-1']
+    }
   })
 
   it('falls back to primaryServer when chapter has no blossomServer', () => {

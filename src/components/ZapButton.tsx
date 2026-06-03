@@ -64,9 +64,10 @@ async function fetchInvoice(
 
   // Verify invoice amount matches what we requested
   const decoded = decode(invoice)
-  const invoiceAmountMsat = decoded.sections.find(
-    (s: { name: string }) => s.name === 'amount',
-  )?.value as number | undefined
+  const amountSection = decoded.sections.find((s) => s.name === 'amount') as
+    | { value?: string }
+    | undefined
+  const invoiceAmountMsat = amountSection?.value ? parseInt(amountSection.value, 10) : undefined
   if (!invoiceAmountMsat || invoiceAmountMsat !== parsed * 1000) {
     throw new Error(
       `Invoice amount mismatch: expected ${parsed * 1000} msat, got ${invoiceAmountMsat}`,

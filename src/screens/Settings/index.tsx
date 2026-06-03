@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BrandMark } from '@/components/BrandMark'
 import { useAuthStore } from '@/stores/authStore'
 import { useBlossomStore, DEFAULT_BLOSSOM_SERVERS } from '@/stores/blossomStore'
 import { useRelayStore } from '@/stores/relayStore'
@@ -10,6 +11,20 @@ function truncatePubkey(pubkey: string) {
   if (pubkey.length <= 16) return pubkey
   return `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`
 }
+
+const BackIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4 shrink-0"
+  >
+    <path d="M15 18l-6-6 6-6" />
+  </svg>
+)
 
 export function SettingsScreen() {
   const navigate = useNavigate()
@@ -54,10 +69,13 @@ export function SettingsScreen() {
         <header className="flex items-center gap-4">
           <button
             onClick={() => navigate(-1)}
-            className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+            aria-label="Back"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white"
           >
-            ←
+            <BackIcon />
+            <span className="hidden sm:inline">Back</span>
           </button>
+          <BrandMark size="sm" showLabel={false} />
           <div>
             <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">Settings</h1>

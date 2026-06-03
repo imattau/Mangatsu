@@ -54,12 +54,13 @@ export class NostrService {
   }
 
   subscribeToChapters(
-    comicDTag: string,
+    pubkey: string,
+    _comicDTag: string,
     onEvent?: (event: NostrEvent) => void,
   ): Subscription {
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30041], '#d': [`${comicDTag}/`] }],
+      [{ kinds: [30041], authors: [pubkey] }],
       { eventStore: this.eventStore },
     )
 

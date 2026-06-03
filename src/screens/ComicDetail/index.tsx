@@ -122,6 +122,7 @@ export function ComicDetailScreen() {
 
   // Comic from store (own or previously cached)
   const storedComic: Comic | undefined = dTag ? comics[dTag] : undefined
+  const chapterAuthor = storedComic?.pubkey || foreignPubkey || ''
 
   // Subscribe to foreign comic if pubkey param is present
   useEffect(() => {
@@ -132,10 +133,10 @@ export function ComicDetailScreen() {
 
   // Subscribe to chapters
   useEffect(() => {
-    if (!dTag) return
-    const sub = service.subscribeToChapters(dTag)
+    if (!dTag || !chapterAuthor) return
+    const sub = service.subscribeToChapters(chapterAuthor, dTag)
     return () => sub.unsubscribe()
-  }, [dTag, service, syncGeneration])
+  }, [chapterAuthor, dTag, service, syncGeneration])
 
   // Live foreign comic event from eventStore
   const foreignComicFilter = useMemo(
@@ -163,8 +164,8 @@ export function ComicDetailScreen() {
 
   // Chapter live events
   const chapterFilter = useMemo(
-    () => (dTag ? [{ kinds: [30041], '#d': [`${dTag}/`] }] : null),
-    [dTag],
+    () => (dTag && chapterAuthor ? [{ kinds: [30041], authors: [chapterAuthor] }] : null),
+    [chapterAuthor, dTag],
   )
   const chapterTimeline$ = useMemo(
     () => (chapterFilter ? eventStore.timeline(chapterFilter) : of([])),
@@ -213,7 +214,7 @@ export function ComicDetailScreen() {
       const signed = await service.eventFactory.build(template)
       if (signed) {
         await service.publishEvent(signed as NostrEvent)
-        setComic({ ...comic, pubkey: myPubkey ?? comic.pubkey })
+        setComic(comic)
         setAddedToLibrary(true)
       }
     } finally {

@@ -1,7 +1,14 @@
 import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { HeaderNav } from '../components/HeaderNav'
+
+const mockRefreshSync = vi.fn()
+let mockIsRefreshing = false
+
+vi.mock('../context/NostrContext', () => ({
+  useNostr: () => ({ refreshSync: mockRefreshSync, isRefreshing: mockIsRefreshing }),
+}))
 
 function Wrapper({ path = '/' }: { path?: string }) {
   return (
@@ -12,6 +19,23 @@ function Wrapper({ path = '/' }: { path?: string }) {
 }
 
 describe('HeaderNav', () => {
+  beforeEach(() => {
+    mockIsRefreshing = false
+    mockRefreshSync.mockClear()
+  })
+
+  it('renders a refresh button', () => {
+    render(<Wrapper />)
+    expect(screen.getByLabelText(/refresh relays/i)).toBeInTheDocument()
+  })
+
+  it('shows refreshing state', () => {
+    mockIsRefreshing = true
+    render(<Wrapper />)
+    expect(screen.getByLabelText(/refreshing relays/i)).toBeInTheDocument()
+    expect(screen.getByText(/refreshing/i)).toBeInTheDocument()
+  })
+
   it('renders Library and Feed nav items', () => {
     render(<Wrapper />)
     // Labels are hidden on mobile but present in DOM
@@ -41,5 +65,11 @@ describe('HeaderNav', () => {
     render(<Wrapper path="/feed" />)
     const feedLink = screen.getByText('Feed').closest('a')
     expect(feedLink).toHaveClass('text-white')
+  })
+
+  it('invokes refresh on click', () => {
+    render(<Wrapper />)
+    screen.getByLabelText(/refresh relays/i).click()
+    expect(mockRefreshSync).toHaveBeenCalledOnce()
   })
 })

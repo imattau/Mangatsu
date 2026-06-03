@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import { useEffect, useState } from 'react'
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { LoginScreen } from '@/screens/Login'
 import { LibraryScreen } from '@/screens/Library'
@@ -10,13 +11,37 @@ import { FeedScreen } from '@/screens/Feed'
 import { AppLayout } from '@/components/AppLayout'
 import { useAuthStore } from '@/stores/authStore'
 
+function useAuthHydrated() {
+  const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated())
+
+  useEffect(() => {
+    return useAuthStore.persist.onFinishHydration(() => {
+      setHydrated(true)
+    })
+  }, [])
+
+  return hydrated
+}
+
 function ProtectedRoute() {
   const pubkey = useAuthStore((state) => state.pubkey)
+  const hydrated = useAuthHydrated()
+
+  if (!hydrated) {
+    return null
+  }
+
   return pubkey ? <Outlet /> : <Navigate to="/login" replace />
 }
 
 function LoginRoute() {
   const pubkey = useAuthStore((state) => state.pubkey)
+  const hydrated = useAuthHydrated()
+
+  if (!hydrated) {
+    return null
+  }
+
   return pubkey ? <Navigate to="/" replace /> : <LoginScreen />
 }
 

@@ -89,6 +89,7 @@ describe('SettingsScreen', () => {
 
   it('renders truncated pubkey', () => {
     render(<SettingsScreen />, { wrapper: Wrapper })
+    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
     const el = screen.getByTestId('pubkey')
     expect(el.textContent).toContain('abcdef12')
     expect(el.textContent).toContain('67890')

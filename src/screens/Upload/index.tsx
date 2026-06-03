@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
+import { BrandMark } from '@/components/BrandMark'
 import { MetadataStep, type MetadataFormValues } from './MetadataStep'
 import { ChapterStep, type ChapterFormValues } from './ChapterStep'
 import { UploadStep, type UploadResult } from './UploadStep'
@@ -75,11 +76,14 @@ export function UploadScreen() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 py-6 text-zinc-100">
       <div className="mx-auto w-full max-w-lg">
-        <div className="mb-8">
-          <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-            {isNewComic ? 'Upload Comic' : 'Add Chapter'}
-          </h1>
+        <div className="mb-8 flex items-center gap-3">
+          <BrandMark size="sm" showLabel={false} />
+          <div>
+            <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+              {isNewComic ? 'Upload Comic' : 'Add Chapter'}
+            </h1>
+          </div>
         </div>
 
         {step !== 'done' && (
@@ -109,7 +113,6 @@ export function UploadScreen() {
         {step === 'chapter' && (
           <ChapterStep
             values={chapter}
-            coverMode={metadata.coverMode}
             onChange={setChapter}
             onNext={() => setStep('upload')}
             onBack={() => setStep(isNewComic ? 'metadata' : 'chapter')}
@@ -130,8 +133,8 @@ export function UploadScreen() {
             existingDTag={existingDTag}
             metadata={metadata}
             chapter={chapter}
-            pageHashes={uploadResult.pageHashes}
-            coverHash={uploadResult.coverHash}
+            pageUploads={uploadResult.pageUploads}
+            coverUpload={uploadResult.coverUpload}
             onDone={handlePublishDone}
           />
         )}

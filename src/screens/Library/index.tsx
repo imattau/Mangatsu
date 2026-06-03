@@ -17,6 +17,37 @@ import { publishDraft } from '@/screens/Upload/publishDraft'
 const COMIC_FILTER = (pubkey: string) => [{ kinds: [30040], authors: [pubkey] }]
 const EMPTY_EVENTS: NostrEvent[] = []
 
+const UploadIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4 shrink-0"
+  >
+    <path d="M12 16V4" />
+    <path d="M7 9l5-5 5 5" />
+    <path d="M4 20h16" />
+  </svg>
+)
+
+const SettingsIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4 shrink-0"
+  >
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.34-1.88l-.05-.05A2 2 0 1 1 7.04 4.24l.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+  </svg>
+)
+
 function parseTag(event: NostrEvent, name: string) {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
 }
@@ -159,10 +190,20 @@ export function LibraryScreen() {
               {onlineCount > 0 ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
             </div>
             <Link
-              to="/settings"
-              className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+              to="/upload"
+              aria-label="Upload a comic"
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-white px-3 py-1.5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
             >
-              Settings
+              <UploadIcon />
+              <span className="hidden sm:inline">Upload a comic</span>
+            </Link>
+            <Link
+              to="/settings"
+              aria-label="Settings"
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+            >
+              <SettingsIcon />
+              <span className="hidden sm:inline">Settings</span>
             </Link>
           </div>
         </header>
@@ -211,7 +252,7 @@ export function LibraryScreen() {
                 </p>
               </div>
               <Link
-                to={`/comic/${continueComic.dTag}/chapter/${latestProgress.chapterDTag}`}
+                to={`/comic/${continueComic.dTag}/chapter/${encodeURIComponent(latestProgress.chapterDTag)}`}
                 className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
               >
                 Continue
@@ -226,12 +267,12 @@ export function LibraryScreen() {
             <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
               Your library will appear here once your relays sync or you import comics locally.
             </p>
-            <Link
-              to="/upload"
-              className="mt-6 rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-            >
-              Upload a comic
-            </Link>
+              <Link
+                to="/upload"
+                className="mt-6 rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              >
+                Upload a comic
+              </Link>
           </section>
         ) : (
           <section className="space-y-3">

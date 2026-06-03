@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="58%">
+      <stop offset="0%" stop-color="#2d465e"/>
+      <stop offset="65%" stop-color="#162535"/>
+      <stop offset="100%" stop-color="#0b121a"/>
+    </radialGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ef8c3d"/>
+      <stop offset="70%" stop-color="#b65b27"/>
+      <stop offset="100%" stop-color="#6f3617"/>
+    </radialGradient>
+    <linearGradient id="metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f4f4f2"/>
+      <stop offset="35%" stop-color="#d0d3d5"/>
+      <stop offset="70%" stop-color="#8f949a"/>
+      <stop offset="100%" stop-color="#f5f2ec"/>
+    </linearGradient>
+    <linearGradient id="book" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#faf7f0"/>
+      <stop offset="100%" stop-color="#d8d0c2"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="256" cy="256" r="238" fill="url(#bg)" />
+
+  <g opacity="0.95">
+    <circle cx="256" cy="256" r="214" fill="none" stroke="#000" stroke-width="18" />
+    <circle cx="256" cy="256" r="196" fill="none" stroke="#29394a" stroke-width="12" />
+    <g fill="#c5c7c9" stroke="#0d1116" stroke-width="6">
+      <rect x="248" y="34" width="16" height="42" rx="4" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(30 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(60 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(90 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(120 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(150 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(180 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(210 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(240 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(270 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(300 256 256)" />
+      <rect x="248" y="36" width="16" height="42" rx="4" transform="rotate(330 256 256)" />
+    </g>
+  </g>
+
+  <circle cx="256" cy="256" r="150" fill="url(#core)" stroke="#1b1210" stroke-width="8" />
+  <circle cx="256" cy="256" r="176" fill="none" stroke="#f0f0f0" stroke-opacity="0.18" stroke-width="6" />
+
+  <g transform="translate(145 150)">
+    <path d="M111 8 95 28h-20l-16 6-14 19 8 15 50-20 43 12 43-12 50 20 8-15-14-19-16-6h-20L111 8Z" fill="#e3e4e6" stroke="#111" stroke-width="5" />
+    <path d="M33 87c0-12 10-22 22-22h46v155H55c-12 0-22-10-22-22V87Z" fill="url(#book)" stroke="#111" stroke-width="5" />
+    <path d="M189 87c0-12-10-22-22-22h-46v155h46c12 0 22-10 22-22V87Z" fill="url(#book)" stroke="#111" stroke-width="5" />
+    <path d="M91 65v155" stroke="#111" stroke-width="6" />
+    <path d="M78 85c-20 20-30 46-30 74" stroke="#111" stroke-width="4" opacity="0.65" />
+    <path d="M135 85c20 20 30 46 30 74" stroke="#111" stroke-width="4" opacity="0.65" />
+    <path d="M84 112l-14 28" stroke="#111" stroke-width="4" opacity="0.7" />
+    <path d="M138 112l14 28" stroke="#111" stroke-width="4" opacity="0.7" />
+    <path d="M93 60 124 42" stroke="#111" stroke-width="5" opacity="0.9" />
+    <path d="M175 36l-28 74 18 8 28-74Z" fill="#d3d7dd" stroke="#111" stroke-width="5" />
+    <path d="M194 43 231 6" stroke="#111" stroke-width="5" />
+    <path d="M186 56l46-6" stroke="#111" stroke-width="5" />
+    <path d="M193 71l34 26" stroke="#111" stroke-width="5" />
+  </g>
+
+  <path d="M134 322c34-33 82-53 122-53 41 0 88 20 122 53" stroke="#000" stroke-width="8" stroke-linecap="round" opacity="0.35" />
+  <path d="M158 362c25-18 57-30 98-30 40 0 74 11 98 30" stroke="#000" stroke-width="7" stroke-linecap="round" opacity="0.28" />
+
+  <g fill="#0a0e14" opacity="0.55">
+    <circle cx="74" cy="130" r="4" />
+    <circle cx="98" cy="98" r="3" />
+    <circle cx="410" cy="110" r="4" />
+    <circle cx="436" cy="145" r="3" />
+    <circle cx="66" cy="404" r="4" />
+    <circle cx="446" cy="392" r="3" />
+  </g>
+</svg>

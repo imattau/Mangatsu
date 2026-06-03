@@ -32,9 +32,9 @@ describe('BlossomService.upload', () => {
       created: 0,
     })
 
-    const sha256 = await service.upload(mockFile, 'https://blossom.example.com', mockSigner as never)
+    const result = await service.upload(mockFile, 'https://blossom.example.com', mockSigner as never)
 
-    expect(sha256).toBe('abc123')
+    expect(result).toEqual({ sha256: 'abc123', url: 'https://server/blob/abc123' })
     expect(Actions.uploadBlob).toHaveBeenCalledWith(
       'https://blossom.example.com',
       mockFile,
@@ -54,7 +54,8 @@ describe('BlossomService.upload', () => {
       },
     )
 
-    await service.upload(mockFile, 'https://blossom.example.com', mockSigner as never)
+    const result = await service.upload(mockFile, 'https://blossom.example.com', mockSigner as never)
+    expect(result.sha256).toBe('deadbeef')
     expect(mockSigner.signEvent).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 24242 }),
     )

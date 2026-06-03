@@ -79,8 +79,9 @@ vi.mock('../stores/readStore', () => ({
 }))
 
 vi.mock('../stores/blossomStore', () => ({
-  useBlossomStore: (sel: (s: { primaryServer: () => string | undefined }) => unknown) =>
-    sel({ primaryServer: () => 'https://blossom.example' }),
+  useBlossomStore: (
+    sel: (s: { primaryServer: () => string | undefined; cachedHashes: Record<string, string> }) => unknown,
+  ) => sel({ primaryServer: () => 'https://blossom.example', cachedHashes: {} }),
 }))
 
 function Wrapper({ children }: { children: React.ReactNode }) {

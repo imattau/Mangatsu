@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { nostrService } from '@/services/NostrService'
+import { useNostr } from '@/context/NostrContext'
+import { usePublishQueueStore } from '@/stores/publishQueueStore'
 import type { MetadataFormValues } from './MetadataStep'
 import type { ChapterFormValues } from './ChapterStep'
-import { slugify } from './slugify'
+import { buildPublishDraft, publishDraft, type PublishDraft, type UploadArtifact } from './publishDraft'
 
 interface PublishStepProps {
   isNewComic: boolean
   existingDTag?: string
   metadata: MetadataFormValues
   chapter: ChapterFormValues
-  pageHashes: string[]
-  coverHash: string | null
+  pageUploads: UploadArtifact[]
+  coverUpload: UploadArtifact | null
   onDone: (comicDTag: string) => void
 }
 
@@ -19,69 +20,41 @@ export function PublishStep({
   existingDTag,
   metadata,
   chapter,
-  pageHashes,
-  coverHash,
+  pageUploads,
+  coverUpload,
   onDone,
 }: PublishStepProps) {
+  const { service } = useNostr()
+  const queueDraft = usePublishQueueStore((state) => state.queueDraft)
   const [status, setStatus] = useState<'publishing' | 'done' | 'error'>('publishing')
   const [errorMsg, setErrorMsg] = useState('')
   const ranRef = useRef(false)
 
   async function publish() {
-    const account = nostrService.accountManager.active
-    if (!account) {
-      setErrorMsg('Not logged in')
-      setStatus('error')
-      return
-    }
-    const now = Math.floor(Date.now() / 1000)
-    const comicDTag = existingDTag ?? slugify(metadata.title)
-
+    let draft: PublishDraft | null = null
     try {
-      if (isNewComic) {
-        const comicTags: string[][] = [
-          ['d', comicDTag],
-          ['title', metadata.title],
-        ]
-        if (metadata.authorName) comicTags.push(['author', metadata.authorName])
-        if (metadata.authorPubkey) comicTags.push(['author_pubkey', metadata.authorPubkey])
-        if (metadata.description) comicTags.push(['description', metadata.description])
-        if (coverHash) comicTags.push(['cover', coverHash])
-        for (const t of metadata.tags.split(',').map((s) => s.trim()).filter(Boolean)) {
-          comicTags.push(['t', t])
-        }
-        if (metadata.language) comicTags.push(['language', metadata.language])
+      draft = await buildPublishDraft(service, {
+        isNewComic,
+        existingDTag,
+        metadata,
+        chapter,
+        pageUploads,
+        coverUpload,
+      })
 
-        const comicTemplate = {
-          kind: 30402,
-          created_at: now,
-          tags: comicTags,
-          content: metadata.description,
-        }
-        const signedComic = await account.signer.signEvent(comicTemplate)
-        await nostrService.publishEvent(signedComic as never)
-      }
-
-      const chapterDTag = `${comicDTag}/chapter-${chapter.chapterNumber}`
-      const chapterTags: string[][] = [
-        ['d', chapterDTag],
-        ['title', chapter.chapterTitle],
-        ...pageHashes.map((h) => ['page', `blossom://${h}`]),
-      ]
-      const chapterTemplate = {
-        kind: 30403,
-        created_at: now,
-        tags: chapterTags,
-        content: '',
-      }
-      const signedChapter = await account.signer.signEvent(chapterTemplate)
-      await nostrService.publishEvent(signedChapter as never)
-
+      await publishDraft(service, draft)
       setStatus('done')
-      onDone(comicDTag)
+      onDone(draft.comicDTag)
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : String(err))
-      setStatus('error')
+      const message = err instanceof Error ? err.message : String(err)
+      if (!draft) {
+        setErrorMsg(message)
+        setStatus('error')
+        return
+      }
+      queueDraft(draft, message)
+      setStatus('done')
+      onDone(draft.comicDTag)
     }
   }
 

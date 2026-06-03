@@ -2,3 +2,18 @@
 command = "/home/mattthomson/workspace/Mangatsu/plugins/typegraph-mcp/node_modules/.bin/tsx"
 args = ["/home/mattthomson/workspace/Mangatsu/plugins/typegraph-mcp/server.ts"]
 env = { TYPEGRAPH_PROJECT_ROOT = "/home/mattthomson/workspace/Mangatsu", TYPEGRAPH_TSCONFIG = "/home/mattthomson/workspace/Mangatsu/tsconfig.json" }
+
+[mcp_servers.typegraph.tools.ts_find_symbol]
+approval_mode = "approve"
+
+[mcp_servers.typegraph.tools.ts_definition]
+approval_mode = "approve"
+
+[mcp_servers.typegraph.tools.ts_references]
+approval_mode = "approve"
+
+[mcp_servers.typegraph.tools.ts_module_exports]
+approval_mode = "approve"
+
+[mcp_servers.typegraph.tools.ts_type_info]
+approval_mode = "approve"

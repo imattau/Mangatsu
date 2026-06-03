@@ -48,7 +48,7 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<ProfileResult[]>([])
   const [searching, setSearching] = useState(false)
-  const { service } = useNostr()
+  const { service, syncGeneration } = useNostr()
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
       },
     })
     return () => s.unsubscribe()
-  }, [value, service])
+  }, [value, service, syncGeneration])
 
   function handlePasteInput(raw: string) {
     setPasteRaw(raw)

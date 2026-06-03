@@ -1,10 +1,11 @@
-import { useMemo, useState, useCallback } from 'react'
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useComicStore } from '@/stores/comicStore'
 import { useReadStore } from '@/stores/readStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { usePageObserver } from './usePageObserver'
 import { useProgressPublisher } from './useProgressPublisher'
+import { usePagePreloader } from './usePagePreloader'
 
 function resolvePageUrl(hash: string, server: string): string {
   return `${server.replace(/\/$/, '')}/blob/${hash}`
@@ -20,6 +21,7 @@ export function ReaderScreen() {
   const chapterDTag = chapterId ? decodeURIComponent(chapterId) : ''
 
   const chaptersForComic = useComicStore((s) => s.chaptersForComic)
+  const cachedHashes = useBlossomStore((s) => s.cachedHashes)
   const primaryServer = useBlossomStore((s) => s.primaryServer)
   const setProgress = useReadStore((s) => s.setProgress)
 
@@ -43,11 +45,28 @@ export function ReaderScreen() {
 
   const server = chapter?.blossomServer || primaryServer() || ''
   const pageUrls = useMemo(
-    () => (chapter ? chapter.pageHashes.map((h) => resolvePageUrl(h, server)) : []),
-    [chapter, server],
+    () =>
+      chapter
+        ? chapter.pageHashes.map((h, idx) => {
+            const pageServer = chapter.pageServers?.[idx] || server
+            const cachedUrl = cachedHashes[h] || ''
+            return {
+              url: cachedUrl || resolvePageUrl(h, pageServer),
+              isCached: cachedUrl.length > 0,
+            }
+          })
+        : [],
+    [cachedHashes, chapter, server],
   )
 
   const [currentPage, setCurrentPage] = useState(1)
+  const restoredChapterRef = useRef('')
+  const savedPage = useReadStore((s) => s.progress[chapterDTag]?.page ?? 1)
+
+  useEffect(() => {
+    setCurrentPage(savedPage)
+    restoredChapterRef.current = ''
+  }, [chapterDTag, savedPage])
 
   // One ref per page — stable across renders (keyed by pageUrls.length)
   const pageRefs = useMemo(
@@ -55,6 +74,15 @@ export function ReaderScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pageUrls.length],
   )
+
+  useEffect(() => {
+    if (!chapter || !chapterDTag || restoredChapterRef.current === chapterDTag) return
+    const targetIndex = Math.min(Math.max(savedPage, 1), pageRefs.length) - 1
+    const target = pageRefs[targetIndex]?.current
+    if (!target) return
+    target.scrollIntoView?.({ block: 'start' })
+    restoredChapterRef.current = chapterDTag
+  }, [chapter, chapterDTag, pageRefs, savedPage])
 
   const handleVisible = useCallback(
     (idx: number) => {
@@ -72,6 +100,7 @@ export function ReaderScreen() {
   )
 
   usePageObserver(pageRefs, handleVisible)
+  usePagePreloader(pageUrls, currentPage)
   useProgressPublisher(chapterDTag, currentPage)
 
   if (!chapter) {
@@ -110,14 +139,14 @@ export function ReaderScreen() {
 
       {/* Pages */}
       <main className="mx-auto max-w-2xl">
-        {pageUrls.map((url, idx) => (
+        {pageUrls.map((page, idx) => (
           <img
-            key={url}
+            key={page.url}
             ref={(el) => { pageRefs[idx].current = el }}
-            src={url}
+            src={page.url}
             alt={`Page ${idx + 1}`}
             className="block w-full"
-            loading={idx === 0 ? 'eager' : 'lazy'}
+            loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}
           />
         ))}
       </main>

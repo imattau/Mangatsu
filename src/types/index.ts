@@ -7,6 +7,7 @@ export interface Comic {
   description: string
   coverHash: string
   blossomServer: string
+  coverServer?: string
   tags: string[]
   eventId: string
 }
@@ -19,6 +20,7 @@ export interface Chapter {
   title: string
   pageHashes: string[]
   blossomServer: string
+  pageServers?: string[]
   publishedAt: number
   eventId: string
 }

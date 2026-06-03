@@ -10,7 +10,6 @@ export interface ChapterFormValues {
 
 interface ChapterStepProps {
   values: ChapterFormValues
-  coverMode: 'file' | 'first-page'
   onChange: (values: ChapterFormValues) => void
   onNext: () => void
   onBack: () => void
@@ -41,8 +40,7 @@ async function parseComicInfoXml(
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function ChapterStep({ values, coverMode, onChange, onNext, onBack }: ChapterStepProps) {
+export function ChapterStep({ values, onChange, onNext, onBack }: ChapterStepProps) {
   const [dragging, setDragging] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState('')

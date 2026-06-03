@@ -7,6 +7,7 @@ import {
 } from 'applesauce-accounts/accounts'
 import { NostrConnectSigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
+import { BrandMark } from '@/components/BrandMark'
 import { useAuthStore } from '@/stores/authStore'
 import { QrCodeView } from './QrCodeView'
 
@@ -117,7 +118,7 @@ export function LoginScreen() {
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(39,39,42,0.85),_rgba(9,9,11,1)_55%)] px-4 py-8 text-zinc-100">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col justify-center">
         <div className="mb-8 text-center">
-          <p className="text-xs uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
+          <BrandMark size="lg" className="justify-center" />
           <h1 className="mt-3 text-4xl font-semibold tracking-tight">Sign in</h1>
           <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-zinc-400">
             Choose a login method. nsec stays in session storage only; extension and NIP-46

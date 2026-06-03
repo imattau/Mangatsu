@@ -15,11 +15,18 @@ interface RelayState {
   activeRelays: () => string[]
 }
 
+function areRelaysEqual(a: string[], b: string[]) {
+  return a.length === b.length && a.every((relay, index) => relay === b[index])
+}
+
 export const useRelayStore = create<RelayState>()(
   persist(
     (set, get) => ({
       relays: [],
-      setRelays: (relays) => set({ relays }),
+      setRelays: (relays) => {
+        if (areRelaysEqual(get().relays, relays)) return
+        set({ relays })
+      },
       activeRelays: () => (get().relays.length > 0 ? get().relays : DEFAULT_RELAYS),
     }),
     { name: 'relays' },

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { blossomService } from '@/services/BlossomService'
 import { DEFAULT_BLOSSOM_SERVERS, useBlossomStore } from '@/stores/blossomStore'
 import { useNostr } from '@/context/NostrContext'
+import { convertImageFileToWebp } from './webp'
+import type { UploadArtifact } from './publishDraft'
 
 export interface UploadResult {
-  pageHashes: string[]
-  coverHash: string | null
+  pageUploads: UploadArtifact[]
+  coverUpload: UploadArtifact | null
 }
 
 interface UploadStepProps {
@@ -18,10 +20,12 @@ interface UploadStepProps {
 
 export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: UploadStepProps) {
   const servers = useBlossomStore((s) => s.servers)
+  const setCachedHash = useBlossomStore((s) => s.setCachedHash)
   const { service } = useNostr()
   const [uploaded, setUploaded] = useState(0)
   const [error, setError] = useState('')
   const [running, setRunning] = useState(false)
+  const [phase, setPhase] = useState<'idle' | 'converting' | 'uploading'>('idle')
   const ranRef = useRef(false)
 
   const total = pages.length + (coverFile || coverMode === 'first-page' ? 1 : 0)
@@ -41,14 +45,16 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function uploadWithRetry(file: File, serverUrls: string[]): Promise<string> {
+  async function uploadWithRetry(file: File, serverUrls: string[]): Promise<UploadArtifact> {
     const account = service.accountManager.active
     if (!account) throw new Error('Not logged in')
 
     const failures: string[] = []
     for (const serverUrl of serverUrls) {
       try {
-        return await blossomService.upload(file, serverUrl, account.signer as never)
+        const result = await blossomService.upload(file, serverUrl, account.signer as never)
+        setCachedHash(result.sha256, result.url)
+        return { hash: result.sha256, server: serverUrl }
       } catch (err) {
         failures.push(`${serverUrl}: ${err instanceof Error ? err.message : String(err)}`)
       }
@@ -57,39 +63,50 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     throw new Error(`Failed to upload to any Blossom server.\n${failures.join('\n')}`)
   }
 
+  async function convertAndUploadWithRetry(file: File, serverUrls: string[]): Promise<UploadArtifact> {
+    setPhase('converting')
+    const webpFile = await convertImageFileToWebp(file)
+    setPhase('uploading')
+    return uploadWithRetry(webpFile, serverUrls)
+  }
+
   async function run() {
     setRunning(true)
     setError('')
+    setPhase('idle')
     const serverUrls = getUploadServers()
-    const pageHashes: string[] = []
+    const pageUploads: UploadArtifact[] = []
 
     for (const page of pages) {
       try {
-        const hash = await uploadWithRetry(page, serverUrls)
-        pageHashes.push(hash)
+        const upload = await convertAndUploadWithRetry(page, serverUrls)
+        pageUploads.push(upload)
         setUploaded((n) => n + 1)
       } catch (err) {
         setError(`Failed to upload page: ${err instanceof Error ? err.message : String(err)}`)
         setRunning(false)
+        setPhase('idle')
         return
       }
     }
 
-    let coverHash: string | null = null
+    let coverUpload: UploadArtifact | null = null
     const coverSource = coverMode === 'first-page' ? pages[0] : coverFile
     if (coverSource) {
       try {
-        coverHash = await uploadWithRetry(coverSource, serverUrls)
+        coverUpload = await convertAndUploadWithRetry(coverSource, serverUrls)
         setUploaded((n) => n + 1)
       } catch (err) {
         setError(`Failed to upload cover: ${err instanceof Error ? err.message : String(err)}`)
         setRunning(false)
+        setPhase('idle')
         return
       }
     }
 
     setRunning(false)
-    onDone({ pageHashes, coverHash })
+    setPhase('idle')
+    onDone({ pageUploads, coverUpload })
   }
 
   const percent = total > 0 ? Math.round((uploaded / total) * 100) : 0
@@ -102,7 +119,9 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
         <div className="flex justify-between text-sm text-zinc-400">
           <span>
             {running
-              ? `Uploading ${uploaded + 1} of ${total}...`
+              ? phase === 'converting'
+                ? `Converting ${uploaded + 1} of ${total}...`
+                : `Uploading ${uploaded + 1} of ${total}...`
               : uploaded === total
               ? 'Upload complete'
               : 'Ready'}
