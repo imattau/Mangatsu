@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useNostr } from '@/context/NostrContext'
 import { usePublishQueueStore } from '@/stores/publishQueueStore'
 import type { MetadataFormValues } from './MetadataStep'
 import type { ChapterFormValues } from './ChapterStep'
 import { buildPublishDraft, publishDraft, type PublishDraft, type UploadArtifact } from './publishDraft'
+import type { ServerResult } from './UploadStep'
 
 interface PublishStepProps {
   isNewComic: boolean
@@ -12,6 +13,7 @@ interface PublishStepProps {
   chapter: ChapterFormValues
   pageUploads: UploadArtifact[]
   coverUpload: UploadArtifact | null
+  serverResults: ServerResult[]
   onDone: (comicDTag: string) => void
 }
 
@@ -22,13 +24,13 @@ export function PublishStep({
   chapter,
   pageUploads,
   coverUpload,
+  serverResults,
   onDone,
 }: PublishStepProps) {
   const { service } = useNostr()
   const queueDraft = usePublishQueueStore((state) => state.queueDraft)
-  const [status, setStatus] = useState<'publishing' | 'done' | 'error'>('publishing')
+  const [status, setStatus] = useState<'review' | 'publishing' | 'done' | 'error'>('review')
   const [errorMsg, setErrorMsg] = useState('')
-  const ranRef = useRef(false)
 
   async function publish() {
     let draft: PublishDraft | null = null
@@ -58,20 +60,73 @@ export function PublishStep({
     }
   }
 
-  useEffect(() => {
-    if (ranRef.current) return
-    ranRef.current = true
+  function handlePublish() {
+    setStatus('publishing')
     void publish()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
+  }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-zinc-100">Step 4 — Publishing</h2>
+    <div className="space-y-6">
+      <h2 className="text-lg font-semibold text-zinc-100">Step 4 — Publish</h2>
+
+      {(status === 'review' || status === 'publishing' || status === 'error') && (
+        <>
+          <div className="overflow-hidden rounded-xl border border-zinc-800">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                  <th className="px-4 py-2 font-medium">Server</th>
+                  <th className="px-4 py-2 font-medium text-right">Files</th>
+                  <th className="px-4 py-2 font-medium text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {serverResults.map((r) => {
+                  const isPartial = r.uploaded < r.total
+                  return (
+                    <tr key={r.url} className="border-b border-zinc-800/50 last:border-0">
+                      <td className="px-4 py-2 text-zinc-300 font-mono text-xs truncate max-w-[180px]">
+                        {new URL(r.url).hostname}
+                      </td>
+                      <td className="px-4 py-2 text-right text-zinc-400">
+                        {r.uploaded}/{r.total}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {isPartial ? (
+                          <span className="text-yellow-400">⚠ partial</span>
+                        ) : (
+                          <span className="text-green-400">✓</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {serverResults.some((r) => r.uploaded < r.total) && (
+            <p className="text-sm text-yellow-400">
+              Some servers accepted only part of the upload — they won't be recorded in the event.
+            </p>
+          )}
+        </>
+      )}
+
+      {status === 'review' && (
+        <button
+          type="button"
+          onClick={handlePublish}
+          className="w-full rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
+        >
+          Publish
+        </button>
+      )}
+
       {status === 'publishing' && (
         <p className="text-sm text-zinc-400">Signing and publishing events to relays...</p>
       )}
+
       {status === 'error' && (
         <p className="text-sm text-red-400">Error: {errorMsg}</p>
       )}

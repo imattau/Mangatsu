@@ -5,9 +5,16 @@ import { useNostr } from '@/context/NostrContext'
 import { convertImageFileToWebp } from './webp'
 import type { UploadArtifact } from './publishDraft'
 
+export interface ServerResult {
+  url: string
+  uploaded: number
+  total: number
+}
+
 export interface UploadResult {
   pageUploads: UploadArtifact[]
   coverUpload: UploadArtifact | null
+  serverResults: ServerResult[]
 }
 
 interface UploadStepProps {
@@ -45,29 +52,36 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function uploadWithRetry(file: File, serverUrls: string[]): Promise<UploadArtifact> {
+  async function uploadToAll(file: File, serverUrls: string[]): Promise<UploadArtifact> {
     const account = service.accountManager.active
     if (!account) throw new Error('Not logged in')
 
-    const failures: string[] = []
+    let hash: string | null = null
+    const successfulServers: string[] = []
+
     for (const serverUrl of serverUrls) {
       try {
         const result = await blossomService.upload(file, serverUrl, account.signer as never)
         setCachedHash(result.sha256, result.url)
-        return { hash: result.sha256, server: serverUrl }
-      } catch (err) {
-        failures.push(`${serverUrl}: ${err instanceof Error ? err.message : String(err)}`)
+        hash = result.sha256
+        successfulServers.push(serverUrl)
+      } catch {
+        // continue to next server
       }
     }
 
-    throw new Error(`Failed to upload to any Blossom server.\n${failures.join('\n')}`)
+    if (hash === null) {
+      throw new Error('Failed to upload to any Blossom server.')
+    }
+
+    return { hash, servers: successfulServers }
   }
 
-  async function convertAndUploadWithRetry(file: File, serverUrls: string[]): Promise<UploadArtifact> {
+  async function convertAndUploadToAll(file: File, serverUrls: string[]): Promise<UploadArtifact> {
     setPhase('converting')
     const webpFile = await convertImageFileToWebp(file)
     setPhase('uploading')
-    return uploadWithRetry(webpFile, serverUrls)
+    return uploadToAll(webpFile, serverUrls)
   }
 
   async function run() {
@@ -79,7 +93,7 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
 
     for (const page of pages) {
       try {
-        const upload = await convertAndUploadWithRetry(page, serverUrls)
+        const upload = await convertAndUploadToAll(page, serverUrls)
         pageUploads.push(upload)
         setUploaded((n) => n + 1)
       } catch (err) {
@@ -94,7 +108,7 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     const coverSource = coverMode === 'first-page' ? pages[0] : coverFile
     if (coverSource) {
       try {
-        coverUpload = await convertAndUploadWithRetry(coverSource, serverUrls)
+        coverUpload = await convertAndUploadToAll(coverSource, serverUrls)
         setUploaded((n) => n + 1)
       } catch (err) {
         setError(`Failed to upload cover: ${err instanceof Error ? err.message : String(err)}`)
@@ -104,9 +118,16 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
       }
     }
 
+    const allUploads = [...pageUploads, ...(coverUpload ? [coverUpload] : [])]
+    const serverResults: ServerResult[] = serverUrls.map((url) => ({
+      url,
+      uploaded: allUploads.filter((u) => u.servers.includes(url)).length,
+      total: allUploads.length,
+    }))
+
     setRunning(false)
     setPhase('idle')
-    onDone({ pageUploads, coverUpload })
+    onDone({ pageUploads, coverUpload, serverResults })
   }
 
   const percent = total > 0 ? Math.round((uploaded / total) * 100) : 0
@@ -149,7 +170,7 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
             </button>
             <button
               type="button"
-              onClick={() => { ranRef.current = false; void run() }}
+              onClick={() => { ranRef.current = false; setUploaded(0); void run() }}
               className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
             >
               Retry
