@@ -25,6 +25,7 @@ let mockProgress: Record<string, { id: string; chapterDTag: string; page: number
 const mockService = {
   relayPool: { status$: {} },
   publishEvent: mockPublishEvent,
+  subscribeToForeignComic: vi.fn(() => ({ unsubscribe: vi.fn() })),
 }
 
 vi.mock('applesauce-react/hooks', () => ({
@@ -85,6 +86,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 describe('LibraryScreen queued publishes', () => {
   beforeEach(() => {
     mockPublishEvent.mockClear()
+    mockService.subscribeToForeignComic.mockClear()
     usePublishQueueStore.getState().clearDrafts()
     useLibraryStore.getState().setAll([])
     mockComics = {}
@@ -163,5 +165,17 @@ describe('LibraryScreen queued publishes', () => {
     expect(screen.getByText('foreign-comic')).toBeInTheDocument()
     expect(screen.getByText(/loading from library sync/i)).toBeInTheDocument()
     expect(screen.queryByText(/loading saved comics/i)).not.toBeInTheDocument()
+  })
+
+  it('subscribes to missing saved comics so metadata can hydrate', () => {
+    useLibraryStore.getState().setAll(['30040:author-pubkey:foreign-comic'])
+
+    render(<LibraryScreen />, { wrapper: Wrapper })
+
+    expect(mockService.subscribeToForeignComic).toHaveBeenCalledWith(
+      'author-pubkey',
+      'foreign-comic',
+      expect.any(Function),
+    )
   })
 })

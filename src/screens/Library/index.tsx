@@ -166,6 +166,28 @@ export function LibraryScreen() {
     [savedATags, comics],
   )
 
+  useEffect(() => {
+    if (!pubkey) return
+
+    const missingEntries = savedEntries.filter((entry) => entry.comic === null)
+    if (missingEntries.length === 0) return
+
+    const subs = missingEntries.map((entry) =>
+      service.subscribeToForeignComic(entry.authorPubkey, entry.dTag, (foreignEvent) => {
+        const comic = parseComicEvent(foreignEvent, primaryServer())
+        if (comic) {
+          setComic(comic)
+        }
+      }),
+    )
+
+    return () => {
+      for (const sub of subs) {
+        sub.unsubscribe()
+      }
+    }
+  }, [pubkey, primaryServer, savedEntries, service, setComic])
+
   const allComics = useMemo(
     () => Object.values(comics).sort((a, b) => a.title.localeCompare(b.title)),
     [comics],
