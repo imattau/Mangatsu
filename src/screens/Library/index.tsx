@@ -50,6 +50,31 @@ const SettingsIcon = () => (
   </svg>
 )
 
+const HamburgerIcon = ({ open }: { open: boolean }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4 shrink-0"
+  >
+    {open ? (
+      <>
+        <path d="M6 6l12 12" />
+        <path d="M18 6L6 18" />
+      </>
+    ) : (
+      <>
+        <path d="M4 7h16" />
+        <path d="M4 12h16" />
+        <path d="M4 17h16" />
+      </>
+    )}
+  </svg>
+)
+
 function parseTag(event: NostrEvent, name: string) {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
 }
@@ -129,6 +154,7 @@ export function LibraryScreen() {
   const primaryServer = useBlossomStore((state) => state.primaryServer)
   const relayStatus = useObservableState(service.relayPool.status$)
   const [retryingComicDTag, setRetryingComicDTag] = useState<string | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const queuedDrafts = useMemo(
     () => Object.values(draftMap).sort((a, b) => b.queuedAt - a.queuedAt),
     [draftMap],
@@ -210,6 +236,7 @@ export function LibraryScreen() {
 
   const onlineCount =
     relayStatus ? Object.values(relayStatus).filter((status) => status.connected).length : 0
+  const relayOnline = onlineCount > 0
 
   async function handleRetry(draft: PendingPublishDraft) {
     setRetryingComicDTag(draft.comicDTag)
@@ -227,7 +254,7 @@ export function LibraryScreen() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 py-4 text-zinc-100">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6">
-        <header className="flex items-center justify-between">
+        <header className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3 overflow-hidden">
             <BrandMark size="sm" showLabel={false} />
             <div className="min-w-0">
@@ -236,15 +263,30 @@ export function LibraryScreen() {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <HeaderNav />
-            <div className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs text-zinc-400">
-              {onlineCount > 0 ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
-            </div>
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border bg-zinc-950/80 px-3 py-1.5 text-xs transition ${
+                relayOnline
+                  ? 'border-emerald-500/30 text-emerald-300'
+                  : 'border-rose-500/30 text-rose-300'
+              }`}
+              title={relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
+              aria-label={relayOnline ? `${onlineCount} relays online` : 'Offline cache'}
+              >
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    relayOnline ? 'bg-emerald-400' : 'bg-rose-400'
+                  }`}
+                />
+                <span className="hidden sm:inline">
+                  {relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
+                </span>
+              </div>
             <Link
               to="/upload"
               aria-label="Upload a comic"
-              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-white px-3 py-1.5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
+              className="hidden items-center gap-1.5 rounded-full border border-zinc-700 bg-white px-3 py-1.5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 sm:inline-flex"
             >
               <UploadIcon />
               <span className="hidden sm:inline">Upload a comic</span>
@@ -252,11 +294,42 @@ export function LibraryScreen() {
             <Link
               to="/settings"
               aria-label="Settings"
-              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+              className="hidden items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white sm:inline-flex"
             >
               <SettingsIcon />
               <span className="hidden sm:inline">Settings</span>
             </Link>
+            <div className="relative sm:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen((value) => !value)}
+                aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={mobileMenuOpen}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/80 text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+              >
+                <HamburgerIcon open={mobileMenuOpen} />
+              </button>
+              {mobileMenuOpen && (
+                <div className="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl shadow-black/40">
+                  <Link
+                    to="/upload"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
+                  >
+                    <UploadIcon />
+                    Upload
+                  </Link>
+                  <Link
+                    to="/settings"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
+                  >
+                    <SettingsIcon />
+                    Settings
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
