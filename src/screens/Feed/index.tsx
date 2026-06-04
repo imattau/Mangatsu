@@ -33,6 +33,10 @@ function parseAnyTag(event: NostrEvent, names: string[]) {
   return ''
 }
 
+function isMangatsuEvent(event: NostrEvent) {
+  return event.tags.some((tag) => tag[0] === 'L' && tag[1] === 'com.mangatsu')
+}
+
 function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
   const dTag = parseTag(event, 'd')
   if (!dTag) return null
@@ -110,15 +114,21 @@ export function FeedScreen() {
   }, [followedPubkeys, relayKey, service, syncGeneration])
 
   // Reactive timelines
-  const globalFilter = useMemo(() => [{ kinds: [30040], limit: 50 }], [])
+  const mangatsuFilter = useMemo(
+    () => [{ kinds: [30040], '#L': ['com.mangatsu'], limit: 50 }],
+    [],
+  )
   const globalTimeline$ = useMemo(
-    () => eventStore.timeline(globalFilter),
-    [eventStore, globalFilter],
+    () => eventStore.timeline(mangatsuFilter),
+    [eventStore, mangatsuFilter],
   )
   const globalEvents = useObservableState(globalTimeline$) ?? EMPTY_EVENTS
 
   const followsFilter = useMemo(
-    () => (followedPubkeys.length > 0 ? [{ kinds: [30040], authors: followedPubkeys }] : null),
+    () =>
+      followedPubkeys.length > 0
+        ? [{ kinds: [30040], authors: followedPubkeys, '#L': ['com.mangatsu'] }]
+        : null,
     [followedPubkeys],
   )
   const followsTimeline$ = useMemo(
@@ -133,6 +143,7 @@ export function FeedScreen() {
   const globalComics = useMemo(
     () =>
       globalEvents.flatMap((e) => {
+        if (!isMangatsuEvent(e)) return []
         const c = parseComicEvent(e, server)
         return c ? [c] : []
       }),
@@ -142,6 +153,7 @@ export function FeedScreen() {
   const followsComics = useMemo(
     () =>
       followsEvents.flatMap((e) => {
+        if (!isMangatsuEvent(e)) return []
         const c = parseComicEvent(e, server)
         return c ? [c] : []
       }),

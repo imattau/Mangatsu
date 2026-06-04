@@ -61,6 +61,8 @@ export async function buildPublishDraft(
     const comicTags: string[][] = [
       ['d', comicDTag],
       ['title', input.metadata.title],
+      ['L', 'com.mangatsu'],
+      ['l', 'comic', 'com.mangatsu'],
     ]
     if (input.metadata.authorName) comicTags.push(['author', input.metadata.authorName])
     if (input.metadata.authorPubkey) comicTags.push(['author_pubkey', input.metadata.authorPubkey])
@@ -121,6 +123,8 @@ export async function buildPublishDraft(
       const chapterTags: string[][] = [
         ['d', chapterDTag],
         ['title', input.chapter.chapterTitle],
+        ['L', 'com.mangatsu'],
+        ['l', 'chapter', 'com.mangatsu'],
         ...pageUploads.map((upload) => ['page', `blossom://${upload.hash}`, ...upload.servers]),
       ]
       const chapterTemplate = {
