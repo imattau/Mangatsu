@@ -7,6 +7,18 @@ import { useLibraryStore } from '../stores/libraryStore'
 import { usePublishQueueStore } from '../stores/publishQueueStore'
 
 const mockPublishEvent = vi.fn(async () => undefined)
+const mockForeignComicEvent = {
+  id: 'foreign-ev',
+  pubkey: 'author-pubkey',
+  kind: 30040,
+  created_at: 1700000000,
+  content: '',
+  tags: [
+    ['d', 'foreign-comic'],
+    ['title', 'Foreign Comic'],
+    ['cover', 'coverhash', 'https://blossom.example'],
+  ],
+} as const
 const mockComic = {
   id: 'comic-1',
   pubkey: 'pubkey',
@@ -30,9 +42,21 @@ const mockService = {
 
 vi.mock('applesauce-react/hooks', () => ({
   useEventStore: () => ({
-    timeline: vi.fn(() => ({})),
+    timeline: vi.fn((filters: Array<{ kinds?: number[]; authors?: string[]; '#d'?: string[] }>) => ({
+      filters,
+    })),
   }),
-  useObservableState: () => [],
+  useObservableState: (observable: { filters?: Array<{ kinds?: number[]; authors?: string[]; '#d'?: string[] }> }) => {
+    const filter = observable?.filters?.[0]
+    if (
+      filter?.kinds?.includes(30040) &&
+      filter.authors?.[0] === 'author-pubkey' &&
+      filter['#d']?.[0] === 'foreign-comic'
+    ) {
+      return [mockForeignComicEvent]
+    }
+    return []
+  },
 }))
 
 vi.mock('../context/NostrContext', () => ({
@@ -72,6 +96,10 @@ vi.mock('../stores/comicStore', () => ({
       setChapter: vi.fn(),
       chaptersForComic: () => [],
     }),
+}))
+
+vi.mock('../components/BlossomImage', () => ({
+  BlossomImage: ({ alt }: { alt: string }) => <img alt={alt} data-testid="blossom-image" />,
 }))
 
 vi.mock('../stores/readStore', () => ({
@@ -162,9 +190,9 @@ describe('LibraryScreen queued publishes', () => {
 
     render(<LibraryScreen />, { wrapper: Wrapper })
 
-    expect(screen.getByText('foreign-comic')).toBeInTheDocument()
-    expect(screen.getByText(/loading from library sync/i)).toBeInTheDocument()
-    expect(screen.queryByText(/loading saved comics/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Foreign Comic')).toBeInTheDocument()
+    expect(screen.getByAltText('Foreign Comic')).toBeInTheDocument()
+    expect(screen.queryByText(/loading from library sync/i)).not.toBeInTheDocument()
   })
 
   it('subscribes to missing saved comics so metadata can hydrate', () => {
@@ -177,5 +205,15 @@ describe('LibraryScreen queued publishes', () => {
       'foreign-comic',
       expect.any(Function),
     )
+  })
+
+  it('renders saved comic title and cover from the event store on a fresh device', () => {
+    useLibraryStore.getState().setAll(['30040:author-pubkey:foreign-comic'])
+
+    render(<LibraryScreen />, { wrapper: Wrapper })
+
+    expect(screen.getByText('Foreign Comic')).toBeInTheDocument()
+    expect(screen.getByAltText('Foreign Comic')).toBeInTheDocument()
+    expect(screen.queryByText(/loading from library sync/i)).not.toBeInTheDocument()
   })
 })

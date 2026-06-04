@@ -126,7 +126,7 @@ export function ReaderScreen() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
+    <div className="flex h-dvh flex-col overflow-hidden bg-zinc-950 text-zinc-100">
       {/* Header */}
       <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur">
         <Link
@@ -144,7 +144,7 @@ export function ReaderScreen() {
       {/* Pages */}
       <main
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto scroll-smooth overscroll-contain snap-y snap-mandatory touch-pan-y md:snap-none"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain snap-y snap-mandatory touch-pan-y md:snap-none"
       >
         <div className="mx-auto max-w-2xl">
           {pageUrls.map((page, idx) => (

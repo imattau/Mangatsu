@@ -16,11 +16,25 @@ export function usePageObserver(
     const root = rootRef?.current ?? null
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const idx = refs.findIndex((r) => r.current === entry.target)
-            if (idx !== -1) onVisibleRef.current(idx)
-          }
+        const best = entries
+          .filter((entry) => entry.isIntersecting)
+          .map((entry) => ({
+            entry,
+            idx: refs.findIndex((r) => r.current === entry.target),
+          }))
+          .filter(({ idx }) => idx !== -1)
+          .reduce<{ idx: number; ratio: number } | null>((current, next) => {
+            const ratio = next.entry.intersectionRatio
+            if (!current) return { idx: next.idx, ratio }
+            if (ratio > current.ratio) return { idx: next.idx, ratio }
+            if (ratio === current.ratio && next.idx < current.idx) {
+              return { idx: next.idx, ratio }
+            }
+            return current
+          }, null)
+
+        if (best) {
+          onVisibleRef.current(best.idx)
         }
       },
       { threshold: 0.65, root },

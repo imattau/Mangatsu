@@ -49,7 +49,7 @@ describe('convertImageFileToWebp', () => {
     expect(result).toHaveProperty('type', 'image/webp')
   })
 
-  it('downscales large images to a 1600px long edge', async () => {
+  it('downscales large images to a 2000px long edge', async () => {
     const close = vi.fn()
     globalThis.createImageBitmap = vi.fn(async () => ({
       width: 3200,
@@ -77,9 +77,9 @@ describe('convertImageFileToWebp', () => {
       new File(['image-bytes'], 'page.jpg', { type: 'image/jpeg' }),
     )
 
-    expect(canvas.width).toBe(1600)
-    expect(canvas.height).toBe(1200)
-    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1600, 1200)
+    expect(canvas.width).toBe(2000)
+    expect(canvas.height).toBe(1500)
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 2000, 1500)
     expect(close).toHaveBeenCalled()
   })
 

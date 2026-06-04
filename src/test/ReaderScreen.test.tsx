@@ -402,6 +402,34 @@ describe('ReaderScreen — progress tracking', () => {
     expect(screen.getByText('3 / 3')).toBeInTheDocument()
   })
 
+  it('chooses the most visible page instead of the last intersecting entry', () => {
+    renderReader()
+    act(() => {
+      observerCallback(
+        [
+          {
+            isIntersecting: true,
+            intersectionRatio: 0.9,
+            target: observedElements[0],
+          } as IntersectionObserverEntry,
+          {
+            isIntersecting: true,
+            intersectionRatio: 0.7,
+            target: observedElements[2],
+          } as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      )
+    })
+
+    expect(mockSetProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chapterDTag: 'one-piece/chapter-1',
+        page: 1,
+      }),
+    )
+  })
+
   it('disconnects observer on unmount', () => {
     const { unmount } = renderReader()
     unmount()

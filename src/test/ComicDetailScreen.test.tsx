@@ -57,6 +57,7 @@ const mockEventFactoryBuild = vi.fn(async (template: object) => ({ ...template, 
 const mockPublishEvent = vi.fn(async () => undefined)
 const mockPublishLibraryList = vi.fn(async () => undefined)
 const mockChaptersForComic = vi.fn(() => mockChapters)
+const mockSetComic = vi.fn()
 let mockSavedATags = ['30040:abc:one-piece']
 const mockRemoveFromLibrary = vi.fn()
 
@@ -85,6 +86,7 @@ vi.mock('../stores/comicStore', () => ({
   useComicStore: (sel: (s: {
     comics: Record<string, Comic>
       chapters: Record<string, Chapter>
+      setComic: (comic: Comic) => void
       setChapter: (c: Chapter) => void
       removeComic: (comicDTag: string) => void
       removeChaptersForComic: (comicDTag: string) => void
@@ -93,6 +95,7 @@ vi.mock('../stores/comicStore', () => ({
     sel({
       comics: { 'one-piece': mockComic },
       chapters: {},
+      setComic: mockSetComic,
       setChapter: vi.fn(),
       removeComic: vi.fn(),
       removeChaptersForComic: vi.fn(),
@@ -155,6 +158,7 @@ describe('ComicDetailScreen', () => {
     mockPublishEvent.mockClear()
     mockPublishLibraryList.mockClear()
     mockChaptersForComic.mockClear()
+    mockSetComic.mockClear()
     mockRemoveFromLibrary.mockClear()
     mockSavedATags = ['30040:abc:one-piece']
 
@@ -280,6 +284,19 @@ describe('ComicDetailScreen', () => {
     } finally {
       confirmSpy.mockRestore()
     }
+  })
+
+  it('hydrates the shared comic store when detail resolves a comic', () => {
+    mockChapters = [mockChapter1, mockChapter2]
+    mockProgress = {}
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
+
+    expect(mockSetComic).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dTag: 'one-piece',
+        title: 'One Piece',
+      }),
+    )
   })
 
   it('shows an add chapter action for owned comics', () => {

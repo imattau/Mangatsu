@@ -206,6 +206,12 @@ export function ComicDetailScreen() {
 
   const comic: Comic | undefined = storedComic ?? foreignComic ?? undefined
 
+  useEffect(() => {
+    if (comic) {
+      setComic(comic)
+    }
+  }, [comic, setComic])
+
   // Chapter live events
   const chapterFilter = useMemo(
     () => (dTag && chapterAuthor ? [{ kinds: [30041], authors: [chapterAuthor] }] : null),

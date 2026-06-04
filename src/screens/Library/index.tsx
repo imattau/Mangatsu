@@ -369,6 +369,7 @@ export function LibraryScreen() {
                     <SavedComicCard
                       key={entry.aTag}
                       entry={entry}
+                      eventStore={eventStore}
                       primaryServer={primaryServer()}
                     />
                   ))}
@@ -461,14 +462,32 @@ function CoverImage({
 
 function SavedComicCard({
   entry,
+  eventStore,
   primaryServer,
 }: {
   entry: SavedEntry
+  eventStore: ReturnType<typeof useEventStore>
   primaryServer: string | undefined
 }) {
-  const comic = entry.comic
-  const href = comic
-    ? `/comic/${comic.dTag}?pubkey=${comic.pubkey}`
+  const savedComicFilter = useMemo(
+    () => [{ kinds: [30040], authors: [entry.authorPubkey], '#d': [entry.dTag] }],
+    [entry.authorPubkey, entry.dTag],
+  )
+  const savedComicTimeline$ = useMemo(
+    () => eventStore.timeline(savedComicFilter),
+    [eventStore, savedComicFilter],
+  )
+  const savedComicEvents = useObservableState(savedComicTimeline$) ?? EMPTY_EVENTS
+  const foreignComic = useMemo(() => {
+    for (const event of savedComicEvents) {
+      const c = parseComicEvent(event, primaryServer)
+      if (c) return c
+    }
+    return null
+  }, [primaryServer, savedComicEvents])
+  const resolvedComic = entry.comic ?? foreignComic
+  const href = resolvedComic
+    ? `/comic/${resolvedComic.dTag}?pubkey=${resolvedComic.pubkey}`
     : `/comic/${entry.dTag}?pubkey=${entry.authorPubkey}`
 
   return (
@@ -476,12 +495,12 @@ function SavedComicCard({
       to={href}
       className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
     >
-      {comic ? (
+      {resolvedComic ? (
         <CoverImage
-          comic={comic}
+          comic={resolvedComic}
           size="grid"
-          server={comic.coverServer || comic.blossomServer || primaryServer}
-          servers={comic.coverServers}
+          server={resolvedComic.coverServer || resolvedComic.blossomServer || primaryServer}
+          servers={resolvedComic.coverServers}
         />
       ) : (
         <div className="flex aspect-[2/3] w-full items-end rounded-2xl border border-zinc-800 bg-zinc-950/80 p-3 shadow-lg shadow-black/20">
@@ -494,9 +513,9 @@ function SavedComicCard({
       )}
       <div className="px-0.5">
         <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
-          {comic?.title ?? entry.dTag}
+          {resolvedComic?.title ?? entry.dTag}
         </p>
-        {!comic ? (
+        {!resolvedComic ? (
           <p className="mt-1 text-xs text-zinc-500">Loading from library sync…</p>
         ) : null}
       </div>
