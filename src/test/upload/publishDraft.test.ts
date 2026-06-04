@@ -63,6 +63,49 @@ describe('publishDraft', () => {
     })
   })
 
+  it('builds an edit-only draft that preserves the existing cover when no new one is uploaded', async () => {
+    const draft = await buildPublishDraft(mockService, {
+      isNewComic: true,
+      existingDTag: 'test-comic',
+      publishComic: true,
+      existingComic: {
+        id: 'comic-1',
+        pubkey: 'pubkey',
+        dTag: 'test-comic',
+        title: 'Existing Title',
+        author: 'Author',
+        description: 'Old desc',
+        coverHash: 'existing-cover',
+        blossomServer: 'https://blossom-existing.example',
+        coverServer: 'https://blossom-existing.example',
+        coverServers: ['https://blossom-existing.example'],
+        tags: ['action'],
+        eventId: 'comic-1',
+      },
+      metadata: {
+        title: 'Updated Title',
+        authorName: 'Author',
+        authorPubkey: 'pub',
+        authorDisplayName: '',
+        description: 'Updated desc',
+        tags: 'action, drama',
+        language: 'en',
+        coverFile: null,
+        coverMode: 'file',
+      },
+      pageUploads: [],
+      coverUpload: null,
+    })
+
+    expect(draft.events).toHaveLength(1)
+    expect(draft.events[0]).toMatchObject({
+      kind: 30040,
+      tags: expect.arrayContaining([
+        ['cover', 'existing-cover', 'https://blossom-existing.example'],
+      ]),
+    })
+  })
+
   it('publishes the stored signed events in order', async () => {
     const draft = {
       comicDTag: 'test-comic',

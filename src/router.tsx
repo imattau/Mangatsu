@@ -59,6 +59,7 @@ export const router = createBrowserRouter([
           { path: '/comic/:dTag/chapter/:chapterId', element: <ReaderScreen /> },
           { path: '/upload', element: <UploadScreen /> },
           { path: '/comic/:dTag/upload', element: <UploadScreen /> },
+          { path: '/comic/:dTag/edit', element: <UploadScreen /> },
           { path: '/settings', element: <SettingsScreen /> },
         ],
       },

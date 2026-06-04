@@ -473,6 +473,16 @@ export function ComicDetailScreen() {
                 )}
                 {comic.pubkey === myPubkey && (
                   <Link
+                    to={`/comic/${comic.dTag}/edit`}
+                    aria-label="Edit details"
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
+                  >
+                    <PencilIcon />
+                    <span className="hidden sm:inline">Edit details</span>
+                  </Link>
+                )}
+                {comic.pubkey === myPubkey && (
+                  <Link
                     to={`/comic/${comic.dTag}/upload`}
                     aria-label="Add chapter"
                     className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
@@ -681,6 +691,24 @@ function TrashIcon() {
       <path d="M6 6l1 14h10l1-14" />
       <path d="M10 11v5" />
       <path d="M14 11v5" />
+    </svg>
+  )
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
     </svg>
   )
 }

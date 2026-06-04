@@ -16,13 +16,14 @@ interface MetadataStepProps {
   values: MetadataFormValues
   onChange: (values: MetadataFormValues) => void
   onNext: () => void
+  allowFirstPage?: boolean
 }
 
 function inputClass(extra = '') {
   return `w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none ${extra}`
 }
 
-export function MetadataStep({ values, onChange, onNext }: MetadataStepProps) {
+export function MetadataStep({ values, onChange, onNext, allowFirstPage = true }: MetadataStepProps) {
   function set<K extends keyof MetadataFormValues>(key: K, val: MetadataFormValues[K]) {
     onChange({ ...values, [key]: val })
   }
@@ -115,18 +116,22 @@ export function MetadataStep({ values, onChange, onNext }: MetadataStepProps) {
               onChange={handleCoverFile}
             />
           </label>
-          <span className="text-xs text-zinc-600">or</span>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
-            <input
-              type="checkbox"
-              checked={values.coverMode === 'first-page'}
-              onChange={(e) =>
-                set('coverMode', e.target.checked ? 'first-page' : 'file')
-              }
-              className="accent-zinc-400"
-            />
-            Use first page of CBZ
-          </label>
+          {allowFirstPage ? (
+            <>
+              <span className="text-xs text-zinc-600">or</span>
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={values.coverMode === 'first-page'}
+                  onChange={(e) =>
+                    set('coverMode', e.target.checked ? 'first-page' : 'file')
+                  }
+                  className="accent-zinc-400"
+                />
+                Use first page of CBZ
+              </label>
+            </>
+          ) : null}
         </div>
         {values.coverFile && values.coverMode === 'file' && (
           <img

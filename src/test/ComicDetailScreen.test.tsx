@@ -219,6 +219,17 @@ describe('ComicDetailScreen', () => {
     )
   })
 
+  it('shows an edit details action for the comic owner', () => {
+    mockChapters = [mockChapter1, mockChapter2]
+    mockProgress = {}
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
+
+    expect(screen.getByRole('link', { name: /edit details/i })).toHaveAttribute(
+      'href',
+      '/comic/one-piece/edit',
+    )
+  })
+
   it('renders clickable metadata tags that open a filtered feed', () => {
     mockChapters = [mockChapter1, mockChapter2]
     mockProgress = {}

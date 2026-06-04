@@ -88,12 +88,48 @@ describe('PublishStep', () => {
 
     await user.click(screen.getByRole('button', { name: /publish/i }))
 
+      await waitFor(() => {
+        expect(mockAddToLibrary).toHaveBeenCalledWith('30040:abc:new-comic')
+        expect(mockPublishLibraryList).toHaveBeenCalledWith(
+          ['30040:abc:existing-comic', '30040:abc:new-comic'],
+          expect.objectContaining({ pubkey: 'abc' }),
+        )
+        expect(onDone).toHaveBeenCalledWith('new-comic')
+      })
+  })
+
+  it('can publish metadata without altering the library list', async () => {
+    const user = userEvent.setup()
+    const onDone = vi.fn()
+
+    render(
+      <PublishStep
+        isNewComic={false}
+        existingDTag="existing-comic"
+        metadata={{
+          title: 'Existing Comic',
+          authorName: '',
+          authorPubkey: '',
+          authorDisplayName: '',
+          description: '',
+          tags: '',
+          language: '',
+          coverFile: null,
+          coverMode: 'file',
+        }}
+        pageUploads={[]}
+        coverUpload={null}
+        serverResults={[]}
+        syncLibraryList={false}
+        onDone={onDone}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /publish/i }))
+
     await waitFor(() => {
-      expect(mockAddToLibrary).toHaveBeenCalledWith('30040:abc:new-comic')
-      expect(mockPublishLibraryList).toHaveBeenCalledWith(
-        ['30040:abc:existing-comic', '30040:abc:new-comic'],
-        expect.objectContaining({ pubkey: 'abc' }),
-      )
+      expect(mockAddToLibrary).not.toHaveBeenCalled()
+      expect(mockPublishLibraryList).not.toHaveBeenCalled()
       expect(onDone).toHaveBeenCalledWith('new-comic')
     })
   })

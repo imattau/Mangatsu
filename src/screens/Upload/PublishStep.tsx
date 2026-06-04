@@ -3,6 +3,7 @@ import { useNostr } from '@/context/NostrContext'
 import { useAuthStore } from '@/stores/authStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePublishQueueStore } from '@/stores/publishQueueStore'
+import type { Comic } from '@/types'
 import type { MetadataFormValues } from './MetadataStep'
 import type { ChapterFormValues } from './ChapterStep'
 import { buildPublishDraft, publishDraft, type PublishDraft, type UploadArtifact } from './publishDraft'
@@ -12,10 +13,12 @@ interface PublishStepProps {
   isNewComic: boolean
   existingDTag?: string
   metadata: MetadataFormValues
-  chapter: ChapterFormValues
+  chapter?: ChapterFormValues
   pageUploads: UploadArtifact[]
   coverUpload: UploadArtifact | null
   serverResults: ServerResult[]
+  existingComic?: Comic | null
+  syncLibraryList?: boolean
   onDone: (comicDTag: string) => void
 }
 
@@ -27,6 +30,8 @@ export function PublishStep({
   pageUploads,
   coverUpload,
   serverResults,
+  existingComic,
+  syncLibraryList = true,
   onDone,
 }: PublishStepProps) {
   const { service } = useNostr()
@@ -48,10 +53,12 @@ export function PublishStep({
         chapter,
         pageUploads,
         coverUpload,
+        existingComic,
+        publishComic: isNewComic || !chapter,
       })
 
       await publishDraft(service, draft)
-      if (pubkey) {
+      if (syncLibraryList && pubkey) {
         const comicATag = `30040:${pubkey}:${draft.comicDTag}`
         addToLibrary(comicATag)
         try {
@@ -87,7 +94,7 @@ export function PublishStep({
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-zinc-100">Step 4 — Publish</h2>
 
-      {(status === 'review' || status === 'publishing' || status === 'error') && (
+      {serverResults.length > 0 && (status === 'review' || status === 'publishing' || status === 'error') && (
         <>
           <div className="overflow-hidden rounded-xl border border-zinc-800">
             <table className="w-full text-sm">
@@ -129,6 +136,9 @@ export function PublishStep({
             </p>
           )}
         </>
+      )}
+      {serverResults.length === 0 && status === 'review' && (
+        <p className="text-sm text-zinc-400">No new Blossom uploads required.</p>
       )}
 
       {status === 'review' && (
