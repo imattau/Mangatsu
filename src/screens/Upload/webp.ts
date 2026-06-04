@@ -1,4 +1,4 @@
-function replaceExtension(filename: string, extension: string): string {
+export function replaceExtension(filename: string, extension: string): string {
   const dot = filename.lastIndexOf('.')
   if (dot <= 0) {
     return `${filename}${extension}`
@@ -6,7 +6,7 @@ function replaceExtension(filename: string, extension: string): string {
   return `${filename.slice(0, dot)}${extension}`
 }
 
-function canvasToBlob(
+export function canvasToBlob(
   canvas: HTMLCanvasElement | OffscreenCanvas,
   type: string,
   quality: number,

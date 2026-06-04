@@ -104,6 +104,18 @@ function chapterLabel(dTag: string) {
   return match ? `Ch. ${match[1]}` : `Ch. ${dTag}`
 }
 
+function parseSavedTag(aTag: string) {
+  const [kind, authorPubkey, dTag] = aTag.split(':')
+  return kind === '30040' && authorPubkey && dTag ? { authorPubkey, dTag } : null
+}
+
+type SavedEntry = {
+  aTag: string
+  authorPubkey: string
+  dTag: string
+  comic: Comic | null
+}
+
 export function LibraryScreen() {
   const { service } = useNostr()
   const eventStore = useEventStore()
@@ -138,14 +150,19 @@ export function LibraryScreen() {
   }, [liveComicEvents, primaryServer, setComic])
 
   const savedATags = useLibraryStore((s) => s.savedATags)
-  const savedComics = useMemo(
+  const savedEntries = useMemo<SavedEntry[]>(
     () =>
-      savedATags
-        .map((aTag) => {
-          const [, , dTag] = aTag.split(':')
-          return dTag ? comics[dTag] ?? null : null
-        })
-        .filter((c): c is Comic => c !== null),
+      savedATags.flatMap((aTag) => {
+        const parsed = parseSavedTag(aTag)
+        if (!parsed) return []
+        return [
+          {
+            aTag,
+            ...parsed,
+            comic: comics[parsed.dTag] ?? null,
+          },
+        ]
+      }),
     [savedATags, comics],
   )
 
@@ -319,37 +336,21 @@ export function LibraryScreen() {
                 </div>
               </section>
             )}
-            {savedATags.length > 0 && (
+            {savedEntries.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Saved</p>
-                  <p className="text-xs text-zinc-600">{savedATags.length} saved</p>
+                  <p className="text-xs text-zinc-600">{savedEntries.length} saved</p>
                 </div>
-                {savedComics.length === 0 ? (
-                  <p className="text-sm text-zinc-500">Loading saved comics…</p>
-                ) : (
-                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-                    {savedComics.map((comic) => (
-                      <Link
-                        key={comic.dTag}
-                        to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
-                        className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
-                      >
-                        <CoverImage
-                          comic={comic}
-                          size="grid"
-                          server={comic.coverServer || comic.blossomServer || primaryServer()}
-                          servers={comic.coverServers}
-                        />
-                        <div className="px-0.5">
-                          <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
-                            {comic.title}
-                          </p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                  {savedEntries.map((entry) => (
+                    <SavedComicCard
+                      key={entry.aTag}
+                      entry={entry}
+                      primaryServer={primaryServer()}
+                    />
+                  ))}
+                </div>
               </section>
             )}
           </>
@@ -433,5 +434,50 @@ function CoverImage({
       loading="lazy"
       className={className}
     />
+  )
+}
+
+function SavedComicCard({
+  entry,
+  primaryServer,
+}: {
+  entry: SavedEntry
+  primaryServer: string | undefined
+}) {
+  const comic = entry.comic
+  const href = comic
+    ? `/comic/${comic.dTag}?pubkey=${comic.pubkey}`
+    : `/comic/${entry.dTag}?pubkey=${entry.authorPubkey}`
+
+  return (
+    <Link
+      to={href}
+      className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
+    >
+      {comic ? (
+        <CoverImage
+          comic={comic}
+          size="grid"
+          server={comic.coverServer || comic.blossomServer || primaryServer}
+          servers={comic.coverServers}
+        />
+      ) : (
+        <div className="flex aspect-[2/3] w-full items-end rounded-2xl border border-zinc-800 bg-zinc-950/80 p-3 shadow-lg shadow-black/20">
+          <div className="space-y-2">
+            <div className="h-2 w-16 rounded-full bg-zinc-800" />
+            <div className="h-3 w-24 rounded-full bg-zinc-700/80" />
+            <div className="h-2 w-20 rounded-full bg-zinc-800" />
+          </div>
+        </div>
+      )}
+      <div className="px-0.5">
+        <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
+          {comic?.title ?? entry.dTag}
+        </p>
+        {!comic ? (
+          <p className="mt-1 text-xs text-zinc-500">Loading from library sync…</p>
+        ) : null}
+      </div>
+    </Link>
   )
 }

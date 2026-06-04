@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 export function usePageObserver(
   refs: React.RefObject<HTMLImageElement | null>[],
   onVisible: (index: number) => void,
+  rootRef?: React.RefObject<HTMLElement | null>,
 ) {
   const onVisibleRef = useRef(onVisible)
   useEffect(() => {
@@ -12,6 +13,7 @@ export function usePageObserver(
   useEffect(() => {
     if (refs.length === 0) return
 
+    const root = rootRef?.current ?? null
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -21,7 +23,7 @@ export function usePageObserver(
           }
         }
       },
-      { threshold: 0.5 },
+      { threshold: 0.65, root },
     )
 
     for (const ref of refs) {
@@ -33,5 +35,5 @@ export function usePageObserver(
     return () => {
       observer.disconnect()
     }
-  }, [refs])
+  }, [refs, rootRef])
 }

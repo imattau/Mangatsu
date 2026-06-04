@@ -1,0 +1,3 @@
+export const MAX_CHAPTER_PAGES = 120
+export const MAX_CHAPTER_SOURCE_BYTES = 100 * 1024 * 1024
+export const MAX_PDF_RENDER_DIMENSION = 1600

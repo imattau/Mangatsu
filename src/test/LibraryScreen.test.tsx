@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { LibraryScreen } from '../screens/Library'
+import { useLibraryStore } from '../stores/libraryStore'
 import { usePublishQueueStore } from '../stores/publishQueueStore'
 
 const mockPublishEvent = vi.fn(async () => undefined)
@@ -85,6 +86,7 @@ describe('LibraryScreen queued publishes', () => {
   beforeEach(() => {
     mockPublishEvent.mockClear()
     usePublishQueueStore.getState().clearDrafts()
+    useLibraryStore.getState().setAll([])
     mockComics = {}
     mockProgress = {}
   })
@@ -151,5 +153,15 @@ describe('LibraryScreen queued publishes', () => {
       expect(mockPublishEvent).toHaveBeenCalledTimes(2)
       expect(usePublishQueueStore.getState().draftsByComicDTag['queued-comic']).toBeUndefined()
     })
+  })
+
+  it('renders saved library entries before comic metadata has hydrated', () => {
+    useLibraryStore.getState().setAll(['30040:author-pubkey:foreign-comic'])
+
+    render(<LibraryScreen />, { wrapper: Wrapper })
+
+    expect(screen.getByText('foreign-comic')).toBeInTheDocument()
+    expect(screen.getByText(/loading from library sync/i)).toBeInTheDocument()
+    expect(screen.queryByText(/loading saved comics/i)).not.toBeInTheDocument()
   })
 })

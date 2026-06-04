@@ -1,5 +1,5 @@
 import { render, waitFor } from '@testing-library/react'
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, type MockedFunction } from 'vitest'
 import { NostrProvider, useNostr } from '../context/NostrContext'
 import type { AuthMethod } from '../stores/authStore'
 
@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => {
   const mockClearAuth = vi.fn()
   const mockSetRelays = vi.fn()
   const mockSetServers = vi.fn()
+  const mockSetComic = vi.fn()
+  const mockDecryptFromSelf = vi.fn().mockResolvedValue('[]')
+  const mockDecodeLibraryList = vi.fn().mockReturnValue([])
   const mockFromExtension = vi.fn()
   const mockAccountData = {
     id: 'account-id',
@@ -30,6 +33,9 @@ const mocks = vi.hoisted(() => {
     mockClearAuth,
     mockSetRelays,
     mockSetServers,
+    mockSetComic,
+    mockDecryptFromSelf,
+    mockDecodeLibraryList,
     mockFromExtension,
     mockAccountData,
     state,
@@ -40,6 +46,9 @@ const mockSetAuth = mocks.mockSetAuth
 const mockClearAuth = mocks.mockClearAuth
 const mockSetRelays = mocks.mockSetRelays
 const mockSetServers = mocks.mockSetServers
+const mockSetComic = mocks.mockSetComic
+const mockDecryptFromSelf = mocks.mockDecryptFromSelf
+const mockDecodeLibraryList = mocks.mockDecodeLibraryList
 const mockFromExtension = mocks.mockFromExtension
 const mockAccountData = mocks.mockAccountData
 
@@ -65,7 +74,22 @@ const mockService = {
   disconnect: vi.fn().mockResolvedValue(undefined),
   subscribeToUserComics: vi.fn(() => ({ unsubscribe: vi.fn() })),
   subscribeToUserLists: vi.fn(() => ({ unsubscribe: vi.fn() })),
-  subscribeToLibraryList: vi.fn(() => ({ unsubscribe: vi.fn() })),
+  subscribeToLibraryList: vi.fn(() => ({ unsubscribe: vi.fn() })) as MockedFunction<
+    (pubkey: string, onEvent: (event: { content: string }) => Promise<void> | void) => { unsubscribe: () => void }
+  >,
+  subscribeToForeignComic: vi.fn(() => ({ unsubscribe: vi.fn() })) as MockedFunction<
+    (
+      pubkey: string,
+      dTag: string,
+      onEvent: (event: {
+        id: string
+        pubkey: string
+        created_at: number
+        tags: string[][]
+        content: string
+      }) => void,
+    ) => { unsubscribe: () => void }
+  >,
 }
 
 vi.mock('applesauce-accounts/accounts', async () => {
@@ -116,8 +140,8 @@ vi.mock('../stores/blossomStore', () => ({
 }))
 
 vi.mock('../lib/nip51', () => ({
-  decryptFromSelf: vi.fn().mockResolvedValue('[]'),
-  decodeLibraryList: vi.fn().mockReturnValue([]),
+  decryptFromSelf: mocks.mockDecryptFromSelf,
+  decodeLibraryList: mocks.mockDecodeLibraryList,
 }))
 
 vi.mock('../stores/libraryStore', () => ({
@@ -128,7 +152,7 @@ vi.mock('../stores/libraryStore', () => ({
 
 vi.mock('../stores/comicStore', () => ({
   useComicStore: {
-    getState: () => ({ comics: {} }),
+    getState: () => ({ comics: {}, setComic: mocks.mockSetComic }),
   },
 }))
 
@@ -141,6 +165,7 @@ vi.mock('../services/NostrService', () => ({
     subscribeToUserComics = mockService.subscribeToUserComics
     subscribeToUserLists = mockService.subscribeToUserLists
     subscribeToLibraryList = mockService.subscribeToLibraryList
+    subscribeToForeignComic = mockService.subscribeToForeignComic
   },
 }))
 
@@ -176,6 +201,10 @@ describe('NostrProvider auth restore', () => {
     mockService.subscribeToUserComics.mockClear()
     mockService.subscribeToUserLists.mockClear()
     mockService.subscribeToLibraryList.mockClear()
+    mockService.subscribeToForeignComic.mockClear()
+    mockSetComic.mockClear()
+    mockDecryptFromSelf.mockReset().mockResolvedValue('[]')
+    mockDecodeLibraryList.mockReset().mockReturnValue([])
   })
 
   it.each(['bunker', 'qr'] as AuthMethod[])('keeps active %s auth during session', async (method) => {
@@ -221,6 +250,66 @@ describe('NostrProvider auth restore', () => {
       expect(mockService.accountManager.setActive).toHaveBeenCalled()
       expect(mockClearAuth).not.toHaveBeenCalled()
       expect(mockService.accountManager.clearActive).not.toHaveBeenCalled()
+    })
+  })
+
+  it('hydrates uncached saved comics from the library list', async () => {
+    let libraryCallback: ((event: { content: string }) => Promise<void> | void) | undefined
+    let foreignComicCallback: ((event: { id: string; pubkey: string; created_at: number; tags: string[][]; content: string }) => void) | undefined
+    const foreignSubscription = { unsubscribe: vi.fn() }
+
+    mockService.subscribeToLibraryList.mockImplementation((_pubkey, onEvent) => {
+      libraryCallback = onEvent
+      return { unsubscribe: vi.fn() }
+    })
+    mockService.subscribeToForeignComic.mockImplementation((_authorPubkey, _dTag, onEvent) => {
+      foreignComicCallback = onEvent
+      return foreignSubscription
+    })
+    mocks.state.method = 'bunker'
+    mocks.state.account = mockAccountData
+    mockService.accountManager.active = { pubkey: 'pubkey' }
+    const savedTags = ['30040:author-pubkey:foreign-comic']
+    const foreignComicEvent = {
+      id: 'foreign-comic-event',
+      pubkey: 'author-pubkey',
+      created_at: 123,
+      content: '',
+      tags: [
+        ['d', 'foreign-comic'],
+        ['title', 'Imported Comic'],
+        ['cover', 'cover-hash', 'https://server.example'],
+      ],
+    }
+
+    mockDecryptFromSelf.mockResolvedValueOnce(JSON.stringify(savedTags))
+    mockDecodeLibraryList.mockReturnValueOnce(savedTags)
+
+    renderProvider()
+
+    await waitFor(() => {
+      expect(mockService.subscribeToLibraryList).toHaveBeenCalled()
+    })
+    await libraryCallback?.({ content: 'encrypted' })
+
+    await waitFor(() => {
+      expect(mockService.subscribeToForeignComic).toHaveBeenCalledWith(
+        'author-pubkey',
+        'foreign-comic',
+        expect.any(Function),
+      )
+      expect(foreignSubscription.unsubscribe).not.toHaveBeenCalled()
+    })
+
+    foreignComicCallback?.(foreignComicEvent)
+
+    await waitFor(() => {
+      expect(mockSetComic).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dTag: 'foreign-comic',
+          title: 'Imported Comic',
+        }),
+      )
     })
   })
 })

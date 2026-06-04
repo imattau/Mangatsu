@@ -282,6 +282,17 @@ describe('ComicDetailScreen', () => {
     }
   })
 
+  it('shows an add chapter action for owned comics', () => {
+    mockChapters = [mockChapter1, mockChapter2]
+    mockProgress = {}
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
+
+    expect(screen.getByRole('link', { name: /add chapter/i })).toHaveAttribute(
+      'href',
+      '/comic/one-piece/upload',
+    )
+  })
+
   it('lists blossom servers in the detail view', () => {
     mockComic.coverServers = ['https://good.example', 'https://bad.example']
     mockChapters = [

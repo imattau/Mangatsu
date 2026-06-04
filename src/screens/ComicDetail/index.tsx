@@ -444,9 +444,11 @@ export function ComicDetailScreen() {
                   <button
                     onClick={() => void handleAddToLibrary()}
                     disabled={adding}
-                    className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-50"
+                    aria-label="Add to library"
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-50 sm:px-4"
                   >
-                    {adding ? 'Adding…' : 'Add to Library'}
+                    <LibraryPlusIcon />
+                    <span className="hidden sm:inline">{adding ? 'Adding…' : 'Add to Library'}</span>
                   </button>
                 )}
                 {comic.pubkey && comic.pubkey !== myPubkey && (
@@ -456,20 +458,32 @@ export function ComicDetailScreen() {
                   <button
                     type="button"
                     onClick={() => void (saved ? handleUnsave() : handleSave())}
-                    className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                    aria-label={saved ? 'Unsave comic' : 'Save comic'}
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
                   >
-                    {saved ? 'Unsave' : 'Save'}
+                    <BookmarkIcon filled={saved} />
+                    <span className="hidden sm:inline">{saved ? 'Unsave' : 'Save'}</span>
                   </button>
+                )}
+                {comic.pubkey === myPubkey && (
+                  <Link
+                    to={`/comic/${comic.dTag}/upload`}
+                    aria-label="Add chapter"
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
+                  >
+                    <PlusIcon />
+                    <span className="hidden sm:inline">Add chapter</span>
+                  </Link>
                 )}
                 {comic.pubkey === myPubkey && (
                   <button
                     type="button"
                     onClick={() => void handleDeleteComic()}
-                    className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-4 py-2 text-sm text-red-300 transition hover:border-red-700 hover:text-red-200"
+                    className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300 transition hover:border-red-700 hover:text-red-200 sm:px-4"
                     aria-label="Delete comic"
                   >
                     <TrashIcon />
-                    <span>Delete</span>
+                    <span className="hidden sm:inline">Delete</span>
                   </button>
                 )}
               </div>
@@ -661,6 +675,71 @@ function TrashIcon() {
       <path d="M6 6l1 14h10l1-14" />
       <path d="M10 11v5" />
       <path d="M14 11v5" />
+    </svg>
+  )
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  )
+}
+
+function LibraryPlusIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M4 6h10" />
+      <path d="M4 10h10" />
+      <path d="M4 14h6" />
+      <path d="M16 12v6" />
+      <path d="M13 15h6" />
+    </svg>
+  )
+}
+
+function BookmarkIcon({ filled }: { filled: boolean }) {
+  return filled ? (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M6 3.75A2.75 2.75 0 0 1 8.75 1h6.5A2.75 2.75 0 0 1 18 3.75V21a.75.75 0 0 1-1.2.6L12 17.25 7.2 21.6A.75.75 0 0 1 6 21V3.75Z" />
+    </svg>
+  ) : (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M6 4.5A2.5 2.5 0 0 1 8.5 2h7A2.5 2.5 0 0 1 18 4.5V21l-6-4-6 4V4.5Z" />
     </svg>
   )
 }

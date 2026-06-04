@@ -482,4 +482,11 @@ describe('ReaderScreen — integration smoke', () => {
     expect(header!.compareDocumentPosition(main!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     expect(main!.compareDocumentPosition(nav!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
+
+  it('enables snap scrolling on the page container', () => {
+    const { container } = renderReader()
+    const main = container.querySelector('main')
+    expect(main).toHaveClass('snap-y', 'snap-mandatory', 'overflow-y-auto')
+    expect(screen.getAllByRole('img')[0]).toHaveClass('snap-start', 'snap-always')
+  })
 })

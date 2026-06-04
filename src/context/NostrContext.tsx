@@ -20,6 +20,9 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { decryptFromSelf, decodeLibraryList } from '@/lib/nip51'
 import type { Nip44Signer } from '@/lib/nip51'
 import { useComicStore } from '@/stores/comicStore'
+import type { NostrEvent } from 'applesauce-core/helpers/event'
+import type { Subscription } from 'rxjs'
+import type { Comic } from '@/types'
 
 const NSEC_SESSION_KEY = 'mangatsu:nsec'
 
@@ -50,6 +53,56 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)
   })
+}
+
+function parseTag(event: NostrEvent, name: string): string {
+  return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
+}
+
+function parseTagTail(event: NostrEvent, name: string, startIndex: number): string[] {
+  const tag = event.tags.find((entry) => entry[0] === name)
+  return tag ? tag.slice(startIndex).filter(Boolean) : []
+}
+
+function parseAnyTag(event: NostrEvent, names: string[]): string {
+  for (const name of names) {
+    const value = parseTag(event, name)
+    if (value) {
+      return value
+    }
+  }
+  return ''
+}
+
+function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
+  const dTag = parseTag(event, 'd')
+  if (!dTag) {
+    return null
+  }
+
+  const coverServers = [
+    ...parseTagTail(event, 'cover', 2),
+    ...parseTagTail(event, 'image', 2),
+  ]
+  const coverServer = coverServers[0] || ''
+
+  return {
+    id: event.id,
+    pubkey: event.pubkey,
+    dTag,
+    title: parseTag(event, 'title') || event.content || 'Untitled',
+    author: parseTag(event, 'author'),
+    description: parseTag(event, 'description') || event.content || '',
+    coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
+    blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
+    coverServer,
+    coverServers,
+    tags: event.tags
+      .filter((tag) => tag[0] === 't')
+      .map((tag) => tag[1])
+      .filter(Boolean),
+    eventId: event.id,
+  }
 }
 
 async function restoreExtensionAccount(
@@ -246,6 +299,7 @@ export function NostrProvider({ children }: PropsWithChildren) {
     if (!pubkey) return
 
     const setAll = useLibraryStore.getState().setAll
+    const foreignComicSubs = new Map<string, Subscription>()
 
     const librarySub = service.subscribeToLibraryList(pubkey, async (event) => {
       try {
@@ -261,21 +315,45 @@ export function NostrProvider({ children }: PropsWithChildren) {
         const aTags = decodeLibraryList(plaintext)
         setAll(aTags)
 
-        // Fetch metadata for any saved comics not yet in comicStore
-        const { comics } = useComicStore.getState()
+        const { comics, setComic } = useComicStore.getState()
+        const desiredForeignKeys = new Set<string>()
         for (const aTag of aTags) {
           const parts = aTag.split(':')
           if (parts.length < 3) continue
           const [, authorPubkey, dTag] = parts
-          if (!authorPubkey || !dTag || comics[dTag]) continue
-          service.subscribeToForeignComic(authorPubkey, dTag).unsubscribe()
+          if (!authorPubkey || !dTag) continue
+
+          const key = `${authorPubkey}:${dTag}`
+          desiredForeignKeys.add(key)
+
+          if (comics[dTag] || foreignComicSubs.has(key)) continue
+
+          const sub = service.subscribeToForeignComic(authorPubkey, dTag, (foreignEvent) => {
+            const comic = parseComicEvent(foreignEvent, undefined)
+            if (comic) {
+              setComic(comic)
+            }
+          })
+          foreignComicSubs.set(key, sub)
+        }
+
+        for (const [key, sub] of foreignComicSubs) {
+          if (!desiredForeignKeys.has(key)) {
+            sub.unsubscribe()
+            foreignComicSubs.delete(key)
+          }
         }
       } catch {
         // decryption failed — leave existing local state intact
       }
     })
 
-    return () => librarySub.unsubscribe()
+    return () => {
+      librarySub.unsubscribe()
+      for (const sub of foreignComicSubs.values()) {
+        sub.unsubscribe()
+      }
+    }
   }, [pubkey, relayKey, service, syncGeneration])
 
   return (

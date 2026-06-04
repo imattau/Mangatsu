@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react'
 import JSZip from 'jszip'
+import { convertPdfFileToWebpPages } from './pdf'
+import { MAX_CHAPTER_PAGES, MAX_CHAPTER_SOURCE_BYTES } from './limits'
 
 export interface ChapterFormValues {
   chapterTitle: string
@@ -18,7 +20,7 @@ interface ChapterStepProps {
 const IMAGE_EXTENSIONS = /\.(jpg|jpeg|png|webp)$/i
 
 function parseTitleFromFilename(filename: string): { number: number; title: string } {
-  const withoutExt = filename.replace(/\.cbz$/i, '')
+  const withoutExt = filename.replace(/\.(cbz|pdf)$/i, '')
   const numMatch = withoutExt.match(/\d+(?:\.\d+)?/)
   const number = numMatch ? parseFloat(numMatch[0]) : 1
   const title = withoutExt
@@ -47,19 +49,16 @@ export function ChapterStep({ values, onChange, onNext, onBack }: ChapterStepPro
 
   const handleCbz = useCallback(
     async (file: File) => {
-      if (file.name.toLowerCase().endsWith('.pdf')) {
-        setParseError(
-          'PDF files aren\'t supported. Convert to CBZ first using Calibre (https://calibre-ebook.com, free), then upload here.',
-        )
-        return
-      }
-      if (!file.name.toLowerCase().endsWith('.cbz')) {
-        setParseError('Please select a .cbz file')
-        return
-      }
       setParseError('')
       setParsing(true)
       try {
+        if (file.size > MAX_CHAPTER_SOURCE_BYTES) {
+          setParseError(
+            `File is too large. Maximum allowed size is ${Math.round(MAX_CHAPTER_SOURCE_BYTES / (1024 * 1024))} MB.`,
+          )
+          return
+        }
+
         const zip = await JSZip.loadAsync(file)
 
         const imageEntries = Object.values(zip.files)
@@ -68,7 +67,13 @@ export function ChapterStep({ values, onChange, onNext, onBack }: ChapterStepPro
 
         if (imageEntries.length === 0) {
           setParseError('No images found in the CBZ file')
-          setParsing(false)
+          return
+        }
+
+        if (imageEntries.length > MAX_CHAPTER_PAGES) {
+          setParseError(
+            `Chapter has ${imageEntries.length} pages. Maximum allowed is ${MAX_CHAPTER_PAGES} pages.`,
+          )
           return
         }
 
@@ -116,16 +121,69 @@ export function ChapterStep({ values, onChange, onNext, onBack }: ChapterStepPro
     [onChange],
   )
 
+  const handlePdf = useCallback(
+    async (file: File) => {
+      setParseError('')
+      setParsing(true)
+      try {
+        if (file.size > MAX_CHAPTER_SOURCE_BYTES) {
+          setParseError(
+            `File is too large. Maximum allowed size is ${Math.round(MAX_CHAPTER_SOURCE_BYTES / (1024 * 1024))} MB.`,
+          )
+          return
+        }
+
+        const fallback = parseTitleFromFilename(file.name)
+        const { pages, firstPageObjectUrl } = await convertPdfFileToWebpPages(file)
+
+        if (pages.length > MAX_CHAPTER_PAGES) {
+          setParseError(
+            `Chapter has ${pages.length} pages. Maximum allowed is ${MAX_CHAPTER_PAGES} pages.`,
+          )
+          return
+        }
+
+        onChange({
+          chapterTitle: fallback.title,
+          chapterNumber: fallback.number,
+          pages,
+          firstPageObjectUrl,
+        })
+      } catch (err) {
+        setParseError(`Failed to parse PDF: ${err instanceof Error ? err.message : String(err)}`)
+      } finally {
+        setParsing(false)
+      }
+    },
+    [onChange],
+  )
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      const lower = file.name.toLowerCase()
+      if (lower.endsWith('.cbz')) {
+        await handleCbz(file)
+        return
+      }
+      if (lower.endsWith('.pdf')) {
+        await handlePdf(file)
+        return
+      }
+      setParseError('Please select a .cbz or .pdf file')
+    },
+    [handleCbz, handlePdf],
+  )
+
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) void handleCbz(file)
+    if (file) void handleFile(file)
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     setDragging(false)
     const file = e.dataTransfer.files[0]
-    if (file) void handleCbz(file)
+    if (file) void handleFile(file)
   }
 
   const canProceed = values.pages.length > 0
@@ -143,9 +201,9 @@ export function ChapterStep({ values, onChange, onNext, onBack }: ChapterStepPro
         }`}
       >
         <p className="text-sm text-zinc-400">
-          {parsing ? 'Parsing CBZ...' : 'Drop a .cbz file here, or click to browse'}
+          {parsing ? 'Parsing chapter file...' : 'Drop a .cbz or .pdf file here, or click to browse'}
         </p>
-        <input type="file" accept=".cbz" className="hidden" onChange={handleFileInput} />
+        <input type="file" accept=".cbz,.pdf,application/pdf" className="hidden" onChange={handleFileInput} />
       </label>
 
       {parseError && <p className="text-sm text-red-400">{parseError}</p>}

@@ -3,6 +3,7 @@ import { blossomService } from '@/services/BlossomService'
 import { DEFAULT_BLOSSOM_SERVERS, useBlossomStore } from '@/stores/blossomStore'
 import { useNostr } from '@/context/NostrContext'
 import { convertImageFileToWebp } from './webp'
+import { MAX_CHAPTER_PAGES } from './limits'
 import type { UploadArtifact } from './publishDraft'
 import { BLOSSOM_UPLOAD_TIMEOUT_MS, uploadFileToServers } from './uploadHelpers'
 
@@ -99,6 +100,15 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     setRunning(true)
     setError('')
     setPhase('idle')
+
+    if (pages.length > MAX_CHAPTER_PAGES) {
+      setError(
+        `Chapter has ${pages.length} pages. Maximum allowed is ${MAX_CHAPTER_PAGES} pages.`,
+      )
+      setRunning(false)
+      return
+    }
+
     const serverUrls = getUploadServers()
     const pageUploads: UploadArtifact[] = []
 

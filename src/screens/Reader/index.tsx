@@ -21,6 +21,7 @@ export function ReaderScreen() {
   const cachedHashes = useBlossomStore((s) => s.cachedHashes)
   const primaryServer = useBlossomStore((s) => s.primaryServer)
   const setProgress = useReadStore((s) => s.setProgress)
+  const scrollContainerRef = useRef<HTMLElement | null>(null)
 
   const allChapters = useMemo(
     () =>
@@ -102,7 +103,7 @@ export function ReaderScreen() {
     [chapterDTag, setProgress],
   )
 
-  usePageObserver(pageRefs, handleVisible)
+  usePageObserver(pageRefs, handleVisible, scrollContainerRef)
   usePagePreloader(pageUrls, currentPage)
   useProgressPublisher(chapterDTag, currentPage)
 
@@ -125,7 +126,7 @@ export function ReaderScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
       {/* Header */}
       <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur">
         <Link
@@ -141,21 +142,26 @@ export function ReaderScreen() {
       </header>
 
       {/* Pages */}
-      <main className="mx-auto max-w-2xl">
-        {pageUrls.map((page, idx) => (
-          <BlossomImage
-            key={page.hash}
-            ref={(el) => {
-              pageRefs[idx].current = el
-            }}
-            hash={page.hash}
-            server={page.server}
-            servers={page.servers}
-            alt={`Page ${idx + 1}`}
-            className="block w-full"
-            loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}
-          />
-        ))}
+      <main
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto scroll-smooth overscroll-contain snap-y snap-mandatory touch-pan-y md:snap-none"
+      >
+        <div className="mx-auto max-w-2xl">
+          {pageUrls.map((page, idx) => (
+            <BlossomImage
+              key={page.hash}
+              ref={(el) => {
+                pageRefs[idx].current = el
+              }}
+              hash={page.hash}
+              server={page.server}
+              servers={page.servers}
+              alt={`Page ${idx + 1}`}
+              className="block w-full snap-start snap-always"
+              loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}
+            />
+          ))}
+        </div>
       </main>
 
       {/* Chapter navigation */}
