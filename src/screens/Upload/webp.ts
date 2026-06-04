@@ -1,3 +1,5 @@
+import { MAX_IMAGE_RENDER_DIMENSION } from './limits'
+
 export function replaceExtension(filename: string, extension: string): string {
   const dot = filename.lastIndexOf('.')
   if (dot <= 0) {
@@ -37,19 +39,26 @@ export async function convertImageFileToWebp(file: File, quality = 0.9): Promise
 
   const bitmap = await createImageBitmap(file)
   try {
+    const scale = Math.min(
+      MAX_IMAGE_RENDER_DIMENSION / bitmap.width,
+      MAX_IMAGE_RENDER_DIMENSION / bitmap.height,
+      1,
+    )
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
     const canvas: HTMLCanvasElement | OffscreenCanvas =
       typeof OffscreenCanvas !== 'undefined'
-        ? new OffscreenCanvas(bitmap.width, bitmap.height)
+        ? new OffscreenCanvas(width, height)
         : Object.assign(document.createElement('canvas'), {
-            width: bitmap.width,
-            height: bitmap.height,
+            width,
+            height,
           })
 
     if ('width' in canvas) {
-      canvas.width = bitmap.width
+      canvas.width = width
     }
     if ('height' in canvas) {
-      canvas.height = bitmap.height
+      canvas.height = height
     }
 
     const context = canvas.getContext('2d') as
@@ -60,7 +69,7 @@ export async function convertImageFileToWebp(file: File, quality = 0.9): Promise
       throw new Error('Canvas 2D context unavailable')
     }
 
-    context.drawImage(bitmap, 0, 0)
+    context.drawImage(bitmap, 0, 0, width, height)
     const blob = await canvasToBlob(canvas, 'image/webp', quality)
     const webpName = replaceExtension(file.name, '.webp')
     return new File([blob], webpName, { type: 'image/webp' })
