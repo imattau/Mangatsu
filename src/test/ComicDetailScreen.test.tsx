@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -12,6 +12,20 @@ vi.mock('../lib/blossom', async () => {
     probeBlossomAssetExists: vi.fn(async () => true),
   }
 })
+
+const mockAreTargetsCached = vi.fn(async (..._args: any[]) => false)
+const mockCacheTargetsForOffline = vi.fn(async (..._args: any[]) => undefined)
+const mockRemoveTargetsFromOfflineCache = vi.fn(async (..._args: any[]) => undefined)
+
+vi.mock('../lib/offline', () => ({
+  comicOfflineTargets: () => [
+    { key: 'Cover::coverhash', label: 'Cover', candidates: ['https://blossom.example/coverhash', 'https://blossom.backup/coverhash'] },
+    { key: 'Romance Dawn page 1::hash1', label: 'Romance Dawn page 1', candidates: ['https://blossom.example/hash1', 'https://blossom.backup/hash1'] },
+  ],
+  areTargetsCached: (...args: any[]) => mockAreTargetsCached(...args),
+  cacheTargetsForOffline: (...args: any[]) => mockCacheTargetsForOffline(...args),
+  removeTargetsFromOfflineCache: (...args: any[]) => mockRemoveTargetsFromOfflineCache(...args),
+}))
 
 const mockComic: Comic = {
   id: 'ev1',
@@ -58,8 +72,10 @@ const mockPublishEvent = vi.fn(async () => undefined)
 const mockPublishLibraryList = vi.fn(async () => undefined)
 const mockChaptersForComic = vi.fn(() => mockChapters)
 const mockSetComic = vi.fn()
+const mockRemoveChapter = vi.fn()
 let mockSavedATags = ['30040:abc:one-piece']
 const mockRemoveFromLibrary = vi.fn()
+const mockRemoveProgressForChapter = vi.fn()
 
 vi.mock('applesauce-react/hooks', () => ({
   useEventStore: () => ({ timeline: vi.fn(() => ({ subscribe: vi.fn() })) }),
@@ -89,6 +105,7 @@ vi.mock('../stores/comicStore', () => ({
       setComic: (comic: Comic) => void
       setChapter: (c: Chapter) => void
       removeComic: (comicDTag: string) => void
+      removeChapter: (chapterDTag: string) => void
       removeChaptersForComic: (comicDTag: string) => void
       chaptersForComic: (dTag: string) => Chapter[]
   }) => unknown) =>
@@ -98,6 +115,7 @@ vi.mock('../stores/comicStore', () => ({
       setComic: mockSetComic,
       setChapter: vi.fn(),
       removeComic: vi.fn(),
+      removeChapter: mockRemoveChapter,
       removeChaptersForComic: vi.fn(),
       chaptersForComic: mockChaptersForComic,
     }),
@@ -123,11 +141,13 @@ vi.mock('../stores/readStore', () => ({
     sel: (s: {
       progress: Record<string, ReadingProgress>
       removeProgressForComic: (comicDTag: string) => void
+      removeProgressForChapter: (chapterDTag: string) => void
     }) => unknown,
   ) =>
     sel({
       progress: mockProgress,
       removeProgressForComic: vi.fn(),
+      removeProgressForChapter: mockRemoveProgressForChapter,
     }),
 }))
 
@@ -159,8 +179,13 @@ describe('ComicDetailScreen', () => {
     mockPublishLibraryList.mockClear()
     mockChaptersForComic.mockClear()
     mockSetComic.mockClear()
+    mockRemoveChapter.mockClear()
     mockRemoveFromLibrary.mockClear()
+    mockRemoveProgressForChapter.mockClear()
     mockSavedATags = ['30040:abc:one-piece']
+    mockAreTargetsCached.mockClear()
+    mockCacheTargetsForOffline.mockClear()
+    mockRemoveTargetsFromOfflineCache.mockClear()
 
     class MockImage {
       onload: null | (() => void) = null
@@ -211,7 +236,7 @@ describe('ComicDetailScreen', () => {
     render(<ComicDetailScreen />, { wrapper: Wrapper })
     const links = screen.getAllByRole('link')
     const chapterLinks = links.filter((l) =>
-      l.getAttribute('href')?.includes('/chapter/'),
+      l.getAttribute('href')?.includes('/chapter/') && !l.getAttribute('href')?.endsWith('/edit'),
     )
     expect(chapterLinks).toHaveLength(2)
     expect(chapterLinks[0].getAttribute('href')).toBe(
@@ -318,6 +343,90 @@ describe('ComicDetailScreen', () => {
     expect(screen.getByRole('link', { name: /add chapter/i })).toHaveAttribute(
       'href',
       '/comic/one-piece/upload',
+    )
+  })
+
+  it('shows chapter edit and delete actions for owned comics', () => {
+    mockChapters = [mockChapter1, mockChapter2]
+    mockProgress = {}
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
+
+    expect(screen.getByRole('link', { name: /edit chapter romance dawn/i })).toHaveAttribute(
+      'href',
+      '/comic/one-piece/chapter/one-piece%2Fchapter-1/edit',
+    )
+    expect(screen.getByRole('button', { name: /delete chapter romance dawn/i })).toBeInTheDocument()
+  })
+
+  it('deletes a chapter and removes local progress state', async () => {
+    mockChapters = [mockChapter1, mockChapter2]
+    mockProgress = {
+      'one-piece/chapter-1': {
+        id: 'p1',
+        chapterDTag: 'one-piece/chapter-1',
+        page: 4,
+        updatedAt: 1700005000,
+      },
+    }
+    const user = userEvent.setup()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    try {
+      render(<ComicDetailScreen />, { wrapper: Wrapper })
+
+      await user.click(screen.getByRole('button', { name: /delete chapter romance dawn/i }))
+
+      expect(mockEventFactoryBuild).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 5,
+          tags: expect.arrayContaining([
+            ['a', '30041:abc:one-piece/chapter-1'],
+            ['k', '30041'],
+          ]),
+        }),
+      )
+      expect(mockPublishEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 5, pubkey: 'abc' }),
+      )
+      expect(mockRemoveChapter).toHaveBeenCalledWith('one-piece/chapter-1')
+      expect(mockRemoveProgressForChapter).toHaveBeenCalledWith('one-piece/chapter-1')
+    } finally {
+      confirmSpy.mockRestore()
+    }
+  })
+
+  it('can cache a comic for offline reading', async () => {
+    mockChapters = [mockChapter1, mockChapter2]
+    mockProgress = {}
+    const user = userEvent.setup()
+
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /make comic available offline/i })).toBeEnabled()
+    })
+
+    const button = screen.getByRole('button', { name: /make comic available offline/i })
+    await user.click(button)
+
+    expect(mockCacheTargetsForOffline).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'Cover::coverhash',
+          candidates: expect.arrayContaining([
+            'https://blossom.example/coverhash',
+            'https://blossom.backup/coverhash',
+          ]),
+        }),
+        expect.objectContaining({
+          key: 'Romance Dawn page 1::hash1',
+          candidates: expect.arrayContaining([
+            'https://blossom.example/hash1',
+            'https://blossom.backup/hash1',
+          ]),
+        }),
+      ]),
+      expect.any(Function),
     )
   })
 

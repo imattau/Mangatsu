@@ -15,6 +15,7 @@ interface ChapterStepProps {
   onChange: (values: ChapterFormValues) => void
   onNext: () => void
   onBack: () => void
+  editing?: boolean
 }
 
 const IMAGE_EXTENSIONS = /\.(jpg|jpeg|png|webp)$/i
@@ -42,7 +43,7 @@ async function parseComicInfoXml(
   }
 }
 
-export function ChapterStep({ values, onChange, onNext, onBack }: ChapterStepProps) {
+export function ChapterStep({ values, onChange, onNext, onBack, editing = false }: ChapterStepProps) {
   const [dragging, setDragging] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState('')
@@ -186,31 +187,41 @@ export function ChapterStep({ values, onChange, onNext, onBack }: ChapterStepPro
     if (file) void handleFile(file)
   }
 
-  const canProceed = values.pages.length > 0
+  const canProceed = editing ? values.chapterTitle.trim().length > 0 : values.pages.length > 0
 
   return (
     <div className="space-y-5">
       <h2 className="text-lg font-semibold text-zinc-100">Step 2 — Chapter</h2>
 
-      <label
-        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        className={`flex min-h-[12rem] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition ${
-          dragging ? 'border-zinc-400 bg-zinc-800' : 'border-zinc-700 bg-zinc-900/50'
-        }`}
-      >
-        <p className="text-sm text-zinc-400">
-          {parsing ? 'Parsing chapter file...' : 'Drop a .cbz or .pdf file here, or click to browse'}
-        </p>
-        <input type="file" accept=".cbz,.pdf,application/pdf" className="hidden" onChange={handleFileInput} />
-      </label>
+      {!editing && (
+        <label
+          onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          className={`flex min-h-[12rem] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition ${
+            dragging ? 'border-zinc-400 bg-zinc-800' : 'border-zinc-700 bg-zinc-900/50'
+          }`}
+        >
+          <p className="text-sm text-zinc-400">
+            {parsing ? 'Parsing chapter file...' : 'Drop a .cbz or .pdf file here, or click to browse'}
+          </p>
+          <input type="file" accept=".cbz,.pdf,application/pdf" className="hidden" onChange={handleFileInput} />
+        </label>
+      )}
+
+      {editing && (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-400">
+          Existing pages will be reused unless you publish a replacement chapter later.
+        </div>
+      )}
 
       {parseError && <p className="text-sm text-red-400">{parseError}</p>}
 
-      {values.pages.length > 0 && (
+      {(values.pages.length > 0 || editing) && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-3">
-          <p className="text-sm text-zinc-400">{values.pages.length} pages found</p>
+          <p className="text-sm text-zinc-400">
+            {values.pages.length > 0 ? `${values.pages.length} pages found` : 'Using the existing chapter pages'}
+          </p>
 
           {values.firstPageObjectUrl && (
             <img
@@ -256,7 +267,7 @@ export function ChapterStep({ values, onChange, onNext, onBack }: ChapterStepPro
           disabled={!canProceed}
           className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Next: Upload
+          {editing ? 'Next: Publish' : 'Next: Upload'}
         </button>
       </div>
     </div>

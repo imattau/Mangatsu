@@ -6,6 +6,7 @@ interface ReadState {
   progress: Record<string, ReadingProgress>
   setProgress: (p: ReadingProgress) => void
   removeProgressForComic: (comicDTag: string) => void
+  removeProgressForChapter: (chapterDTag: string) => void
 }
 
 export const useReadStore = create<ReadState>()(
@@ -20,6 +21,16 @@ export const useReadStore = create<ReadState>()(
             Object.entries(s.progress).filter(([, entry]) => !entry.chapterDTag.startsWith(`${comicDTag}/`)),
           ),
         })),
+      removeProgressForChapter: (chapterDTag) =>
+        set((s) => {
+          const progress = { ...s.progress }
+          for (const [key, entry] of Object.entries(progress)) {
+            if (entry.chapterDTag === chapterDTag) {
+              delete progress[key]
+            }
+          }
+          return { progress }
+        }),
     }),
     { name: 'read' }
   )

@@ -1,6 +1,6 @@
 import type { NostrEvent } from 'applesauce-core/helpers/event'
 import type { NostrService } from '@/services/NostrService'
-import type { Comic } from '@/types'
+import type { Chapter, Comic } from '@/types'
 import type { MetadataFormValues } from './MetadataStep'
 import type { ChapterFormValues } from './ChapterStep'
 import { slugify } from './slugify'
@@ -15,10 +15,12 @@ export interface PublishDraftInput {
   existingDTag?: string
   metadata: MetadataFormValues
   chapter?: ChapterFormValues
+  existingChapter?: Chapter | null
   pageUploads: UploadArtifact[]
   coverUpload: UploadArtifact | null
   existingComic?: Comic | null
   publishComic?: boolean
+  publishChapter?: boolean
 }
 
 export interface PublishDraft {
@@ -41,6 +43,7 @@ export async function buildPublishDraft(
   const comicDTag = input.existingDTag ?? slugify(input.metadata.title)
   const events: NostrEvent[] = []
   const publishComic = input.publishComic ?? input.isNewComic
+  const publishChapter = input.publishChapter ?? Boolean(input.chapter || input.existingChapter)
 
   if (publishComic) {
     const existingCoverUpload =
@@ -80,24 +83,59 @@ export async function buildPublishDraft(
   }
 
   if (input.chapter) {
-    const chapterDTag = `${comicDTag}/chapter-${input.chapter.chapterNumber}`
-    const chapterTags: string[][] = [
-      ['d', chapterDTag],
-      ['title', input.chapter.chapterTitle],
-      ...input.pageUploads.map((upload) => ['page', `blossom://${upload.hash}`, ...upload.servers]),
-    ]
-    const chapterTemplate = {
-      kind: 30041,
-      created_at: createdAt,
-      tags: chapterTags,
-      content: '',
+    const chapterNumber = input.chapter.chapterNumber
+    const chapterDTag = `${comicDTag}/chapter-${chapterNumber}`
+    const chapterSource = input.existingChapter
+    const pageUploads =
+      input.pageUploads.length > 0
+        ? input.pageUploads
+        : chapterSource
+              ? chapterSource.pageHashes.map((hash, index) => ({
+                  hash,
+                  servers: [...new Set([
+                    ...(chapterSource.pageServerLists?.[index] ?? []),
+                    chapterSource.pageServers?.[index],
+                    chapterSource.blossomServer,
+                    input.existingComic?.blossomServer,
+                    ...(input.existingComic?.coverServers ?? []),
+                    input.existingComic?.coverServer,
+                  ].filter(Boolean) as string[])],
+                }))
+              : []
+
+    if (input.existingChapter && publishChapter) {
+      const oldChapterTag = `30041:${input.existingChapter.pubkey}:${input.existingChapter.dTag}`
+      const deleteTemplate = {
+        kind: 5 as const,
+        created_at: createdAt,
+        tags: [
+          ['a', oldChapterTag],
+          ['k', '30041'],
+        ],
+        content: `Deleted chapter ${input.existingChapter.dTag} from Mangatsu`,
+      }
+      events.push(await account.signer.signEvent(deleteTemplate))
     }
-    events.push(await account.signer.signEvent(chapterTemplate))
+
+    if (publishChapter) {
+      const chapterTags: string[][] = [
+        ['d', chapterDTag],
+        ['title', input.chapter.chapterTitle],
+        ...pageUploads.map((upload) => ['page', `blossom://${upload.hash}`, ...upload.servers]),
+      ]
+      const chapterTemplate = {
+        kind: 30041,
+        created_at: createdAt,
+        tags: chapterTags,
+        content: '',
+      }
+      events.push(await account.signer.signEvent(chapterTemplate))
+    }
   }
 
   return {
     comicDTag,
-    title: input.metadata.title,
+    title: input.metadata.title || input.existingComic?.title || input.existingChapter?.title || '',
     createdAt,
     events,
   }

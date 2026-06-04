@@ -296,7 +296,7 @@ Type=simple
 WorkingDirectory=${INSTALL_DIR}
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
-ExecStart=/usr/bin/python3 -m http.server ${PORT} --bind 127.0.0.1 --directory ${INSTALL_DIR}/dist
+ExecStart=/usr/bin/python3 ${INSTALL_DIR}/scripts/spa-http-server.py ${INSTALL_DIR}/dist --bind 127.0.0.1 --port ${PORT}
 Restart=always
 RestartSec=5
 
@@ -511,6 +511,7 @@ sudo_run systemctl start "${SERVICE_NAME}.service"
 log "smoke testing"
 wait_for_ready
 curl -fsS "http://127.0.0.1:${PORT}/" >/dev/null
+curl -fsS "http://127.0.0.1:${PORT}/comic/test-deep-link" >/dev/null
 
 configure_proxy
 

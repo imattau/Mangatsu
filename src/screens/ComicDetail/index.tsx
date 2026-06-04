@@ -17,6 +17,12 @@ import {
   groupBlossomAssetsByServer,
   probeBlossomAssetExists,
 } from '@/lib/blossom'
+import {
+  areTargetsCached,
+  cacheTargetsForOffline,
+  comicOfflineTargets,
+  removeTargetsFromOfflineCache,
+} from '@/lib/offline'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -124,6 +130,13 @@ function comicDeleteTags(comic: Comic, chapters: Chapter[]): string[][] {
   return tags
 }
 
+function chapterDeleteTags(chapter: Chapter): string[][] {
+  return [
+    ['a', `30041:${chapter.pubkey}:${chapter.dTag}`],
+    ['k', '30041'],
+  ]
+}
+
 const EMPTY_EVENTS: NostrEvent[] = []
 
 interface ServerAvailability {
@@ -131,6 +144,8 @@ interface ServerAvailability {
   total: number
   ok: number
 }
+
+type OfflineState = 'checking' | 'available' | 'missing' | 'downloading' | 'removing' | 'error'
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -155,10 +170,13 @@ export function ComicDetailScreen() {
   const setComic = useComicStore((s) => s.setComic)
   const setChapter = useComicStore((s) => s.setChapter)
   const removeComic = useComicStore((s) => s.removeComic)
+  const removeChapter = useComicStore((s) => s.removeChapter)
   const removeChaptersForComic = useComicStore((s) => s.removeChaptersForComic)
-  const chaptersForComic = useComicStore((s) => s.chaptersForComic)
+  const allChapters = useComicStore((s) => s.chapters)
+  const deletedChapterDTags = useComicStore((s) => s.deletedChapterDTags)
   const progress = useReadStore((s) => s.progress)
   const removeProgressForComic = useReadStore((s) => s.removeProgressForComic)
+  const removeProgressForChapter = useReadStore((s) => s.removeProgressForChapter)
   const primaryServer = useBlossomStore((s) => s.primaryServer)
 
   const [addedToLibrary, setAddedToLibrary] = useState(false)
@@ -233,10 +251,10 @@ export function ComicDetailScreen() {
 
   const chapters = useMemo(() => {
     if (!dTag) return []
-    return chaptersForComic(dTag)
-      .slice()
+    return Object.values(allChapters)
+      .filter((c) => c.parentDTag === dTag && !deletedChapterDTags.has(c.dTag))
       .sort((a, b) => chapterNumber(a.dTag) - chapterNumber(b.dTag))
-  }, [chaptersForComic, dTag])
+  }, [allChapters, deletedChapterDTags, dTag])
   const visibleTags = useMemo(
     () => Array.from(new Set((comic?.tags ?? []).map((tag) => tag.trim()).filter(Boolean))),
     [comic?.tags],
@@ -248,6 +266,12 @@ export function ComicDetailScreen() {
     return groupBlossomAssetsByServer(collectComicBlossomAssets(comic, chapters))
   }, [chapters, comic])
   const [blossomAvailability, setBlossomAvailability] = useState<Record<string, ServerAvailability>>({})
+  const offlineTargets = useMemo(() => comicOfflineTargets(comic, chapters), [chapters, comic])
+  const offlineTargetsKey = useMemo(() => offlineTargets.map((target) => target.key).join('\n'), [offlineTargets])
+  const [offlineState, setOfflineState] = useState<OfflineState>('checking')
+  const [offlineProgress, setOfflineProgress] = useState({ done: 0, total: 0 })
+  const [offlineError, setOfflineError] = useState('')
+  const [deletingChapterDTag, setDeletingChapterDTag] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -295,6 +319,61 @@ export function ComicDetailScreen() {
       cancelled = true
     }
   }, [blossomServers, comic])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function checkOfflineState() {
+      if (!comic || offlineTargets.length === 0) {
+        setOfflineState('missing')
+        setOfflineProgress({ done: 0, total: 0 })
+        setOfflineError('')
+        return
+      }
+
+      setOfflineState('checking')
+      const available = await areTargetsCached(offlineTargets)
+      if (cancelled) return
+
+      setOfflineState(available ? 'available' : 'missing')
+      setOfflineProgress({ done: 0, total: offlineTargets.length })
+      setOfflineError('')
+    }
+
+    void checkOfflineState()
+
+    return () => {
+      cancelled = true
+    }
+  }, [comic, offlineTargetsKey])
+
+  async function handleOfflineToggle() {
+    if (!comic || offlineTargets.length === 0) {
+      return
+    }
+
+    setOfflineError('')
+
+    try {
+      if (offlineState === 'available') {
+        setOfflineState('removing')
+        await removeTargetsFromOfflineCache(offlineTargets)
+        setOfflineState('missing')
+        setOfflineProgress({ done: 0, total: offlineTargets.length })
+        return
+      }
+
+      setOfflineState('downloading')
+      setOfflineProgress({ done: 0, total: offlineTargets.length })
+      await cacheTargetsForOffline(offlineTargets, (done, total) => {
+        setOfflineProgress({ done, total })
+      })
+      setOfflineState('available')
+    } catch (err) {
+      setOfflineState('error')
+      setOfflineError(err instanceof Error ? err.message : String(err))
+    }
+  }
 
   const allBlossomAssetsReachable =
     blossomServers.length > 0 &&
@@ -367,6 +446,30 @@ export function ComicDetailScreen() {
       const signed = await service.eventFactory.build(template)
       if (signed) {
         await service.publishEvent(signed as NostrEvent)
+      }
+    } catch {
+      // Deletion event failed to publish — local removal already done
+    }
+  }
+
+  async function handleDeleteChapter(chapter: Chapter) {
+    const confirmDelete = window.confirm(`Delete chapter "${chapter.title}"?`)
+    if (!confirmDelete) return
+
+    setDeletingChapterDTag(chapter.dTag)
+    removeChapter(chapter.dTag)
+    removeProgressForChapter(chapter.dTag)
+    setDeletingChapterDTag('')
+
+    try {
+      const deleteEvent = await service.eventFactory.build({
+        kind: 5,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: chapterDeleteTags(chapter),
+        content: `Deleted chapter ${chapter.dTag} from Mangatsu`,
+      })
+      if (deleteEvent) {
+        await service.publishEvent(deleteEvent as NostrEvent)
       }
     } catch {
       // Deletion event failed to publish — local removal already done
@@ -481,6 +584,28 @@ export function ComicDetailScreen() {
                     <span className="hidden sm:inline">Edit details</span>
                   </Link>
                 )}
+                {comic && (
+                  <button
+                    type="button"
+                    onClick={() => void handleOfflineToggle()}
+                    disabled={offlineState === 'checking' || offlineState === 'downloading' || offlineState === 'removing'}
+                    aria-label={offlineState === 'available' ? 'Remove offline comic' : 'Make comic available offline'}
+                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
+                  >
+                    <OfflineIcon />
+              <span className="hidden sm:inline">
+                      {offlineState === 'available'
+                        ? 'Remove offline'
+                        : offlineState === 'downloading'
+                          ? `Caching ${offlineProgress.done}/${offlineProgress.total}`
+                          : offlineState === 'removing'
+                            ? 'Removing…'
+                            : offlineState === 'checking'
+                              ? 'Checking…'
+                              : 'Make offline'}
+                    </span>
+                  </button>
+                )}
                 {comic.pubkey === myPubkey && (
                   <Link
                     to={`/comic/${comic.dTag}/upload`}
@@ -505,6 +630,15 @@ export function ComicDetailScreen() {
               </div>
               {addedToLibrary && (
                 <p className="mt-3 text-sm text-emerald-400">Added to your library</p>
+              )}
+              {offlineError && (
+                <p className="mt-3 text-sm text-red-400">{offlineError}</p>
+              )}
+              {!offlineError && offlineState === 'available' && (
+                <p className="mt-3 text-sm text-emerald-400">Available offline</p>
+              )}
+              {!offlineError && offlineState === 'missing' && offlineTargets.length > 0 && (
+                <p className="mt-3 text-sm text-zinc-500">Not cached for offline reading</p>
               )}
             </div>
           </header>
@@ -597,42 +731,68 @@ export function ComicDetailScreen() {
             <ul className="flex flex-col gap-2">
               {chapters.map((chapter) => {
                 const chapterProgress = progress[chapter.dTag]
+                const deleting = deletingChapterDTag === chapter.dTag
+                const canEditOrDelete = comic?.pubkey === myPubkey
                 return (
                   <li key={chapter.dTag}>
-                    <Link
-                      to={`/comic/${dTag}/chapter/${encodeURIComponent(chapter.dTag)}`}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 transition hover:border-zinc-600 hover:bg-zinc-900/80"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-zinc-500">{chapterLabel(chapter.dTag)}</p>
-                        <p className="mt-0.5 truncate text-sm font-medium text-zinc-100">
-                          {chapter.title}
-                        </p>
-                        <p className="mt-0.5 text-xs text-zinc-600">
-                          {chapter.pageHashes.length} page{chapter.pageHashes.length !== 1 ? 's' : ''}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {chapterProgress && (
-                          <span className="rounded-full bg-indigo-500/20 border border-indigo-500/40 px-2.5 py-1 text-xs font-medium text-indigo-300">
-                            Continue
-                          </span>
-                        )}
-                        <svg
-                          className="h-4 w-4 text-zinc-600"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5l7 7-7 7"
-                          />
-                        </svg>
-                      </div>
-                    </Link>
+                    <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 transition hover:border-zinc-600 hover:bg-zinc-900/80">
+                      <Link
+                        to={`/comic/${dTag}/chapter/${encodeURIComponent(chapter.dTag)}`}
+                        className="flex min-w-0 flex-1 items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-zinc-500">{chapterLabel(chapter.dTag)}</p>
+                          <p className="mt-0.5 truncate text-sm font-medium text-zinc-100">
+                            {chapter.title}
+                          </p>
+                          <p className="mt-0.5 text-xs text-zinc-600">
+                            {chapter.pageHashes.length} page{chapter.pageHashes.length !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <div className="flex flex-shrink-0 items-center gap-2">
+                          {chapterProgress && (
+                            <span className="rounded-full border border-indigo-500/40 bg-indigo-500/20 px-2.5 py-1 text-xs font-medium text-indigo-300">
+                              Continue
+                            </span>
+                          )}
+                          <svg
+                            className="h-4 w-4 text-zinc-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M9 5l7 7-7 7"
+                            />
+                          </svg>
+                        </div>
+                      </Link>
+                      {canEditOrDelete && (
+                        <div className="flex flex-shrink-0 items-center gap-2">
+                          <Link
+                            to={`/comic/${dTag}/chapter/${encodeURIComponent(chapter.dTag)}/edit`}
+                            aria-label={`Edit chapter ${chapter.title}`}
+                            className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
+                          >
+                            <PencilIcon />
+                            <span className="hidden sm:inline">Edit</span>
+                          </Link>
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={() => void handleDeleteChapter(chapter)}
+                            aria-label={`Delete chapter ${chapter.title}`}
+                            className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300 transition hover:border-red-700 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
+                          >
+                            <TrashIcon />
+                            <span className="hidden sm:inline">{deleting ? 'Deleting…' : 'Delete'}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </li>
                 )
               })}
@@ -709,6 +869,25 @@ function PencilIcon() {
     >
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  )
+}
+
+function OfflineIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M12 3v10" />
+      <path d="M8 9l4 4 4-4" />
+      <path d="M5 19h14" />
     </svg>
   )
 }

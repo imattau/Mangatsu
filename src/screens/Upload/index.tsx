@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useEventStore, useObservableState } from 'applesauce-react/hooks'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { of } from 'rxjs'
+import { useNostr } from '@/context/NostrContext'
 import { BrandMark } from '@/components/BrandMark'
 import { useAuthStore } from '@/stores/authStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { useComicStore } from '@/stores/comicStore'
-import type { Comic } from '@/types'
+import type { Chapter, Comic } from '@/types'
 import { MetadataStep, type MetadataFormValues } from './MetadataStep'
 import { ChapterStep, type ChapterFormValues } from './ChapterStep'
 import { UploadStep, type UploadResult } from './UploadStep'
@@ -26,6 +27,7 @@ const STEP_LABELS: Record<Step, string> = {
 
 const STEP_ORDER: Step[] = ['metadata', 'chapter', 'upload', 'publish', 'done']
 const EDIT_STEP_ORDER: Step[] = ['metadata', 'upload', 'publish', 'done']
+const CHAPTER_EDIT_STEP_ORDER: Step[] = ['chapter', 'upload', 'publish', 'done']
 const EMPTY_EVENTS: NostrEvent[] = []
 
 function defaultMetadata(): MetadataFormValues {
@@ -70,6 +72,17 @@ function parseAnyTag(event: NostrEvent, names: string[]) {
   return ''
 }
 
+function parsePageUploads(event: NostrEvent): Array<{ hash: string; server: string }> {
+  return event.tags
+    .filter((tag) => tag[0] === 'page')
+    .map((tag) => {
+      const raw = tag[1] ?? ''
+      const hash = raw.startsWith('blossom://') ? raw.slice('blossom://'.length) : raw
+      return { hash, server: tag[2] ?? '' }
+    })
+    .filter((upload) => upload.hash.length > 0)
+}
+
 function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
   const dTag = parseTag(event, 'd')
   if (!dTag) {
@@ -94,6 +107,35 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
       .filter((tag) => tag[0] === 't')
       .map((tag) => tag[1])
       .filter(Boolean),
+    eventId: event.id,
+  }
+}
+
+function parseChapterNumberFromDTag(dTag: string): number {
+  const match = dTag.match(/(\d+(?:\.\d+)?)$/)
+  return match ? parseFloat(match[1]) : 1
+}
+
+function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null {
+  const dTag = parseTag(event, 'd')
+  if (!dTag || !dTag.startsWith(`${comicDTag}/`)) {
+    return null
+  }
+
+  const pageUploads = parsePageUploads(event)
+  return {
+    id: event.id,
+    pubkey: event.pubkey,
+    dTag,
+    parentDTag: comicDTag,
+    title: parseTag(event, 'title') || dTag,
+    pageHashes: pageUploads.map((upload) => upload.hash),
+    blossomServer: parseTag(event, 'blossom') || pageUploads[0]?.server || '',
+    pageServers: pageUploads.map((upload) => upload.server),
+    pageServerLists: event.tags
+      .filter((tag) => tag[0] === 'page')
+      .map((tag) => tag.slice(2).filter(Boolean)),
+    publishedAt: event.created_at ?? 0,
     eventId: event.id,
   }
 }
@@ -126,23 +168,29 @@ function UploadHeader({ title }: { title: string }) {
 }
 
 export function UploadScreen() {
-  const { dTag: existingDTag } = useParams<{ dTag?: string }>()
+  const { dTag: existingDTag, chapterId } = useParams<{ dTag?: string; chapterId?: string }>()
   const { pathname } = useLocation()
   const isNewComic = !existingDTag
-  const isEditComic = Boolean(existingDTag) && pathname.endsWith('/edit')
+  const isEditComic = Boolean(existingDTag) && !chapterId && pathname.endsWith('/edit')
+  const isEditChapter = Boolean(existingDTag) && Boolean(chapterId) && pathname.endsWith('/edit')
 
   const eventStore = useEventStore()
+  const { service, syncGeneration } = useNostr()
   const pubkey = useAuthStore((state) => state.pubkey)
   const comics = useComicStore((state) => state.comics)
+  const chapters = useComicStore((state) => state.chapters)
   const setComic = useComicStore((state) => state.setComic)
+  const setStoredChapter = useComicStore((state) => state.setChapter)
   const primaryServer = useBlossomStore((state) => state.primaryServer)
+  const navigate = useNavigate()
 
   const [step, setStep] = useState<Step>(isNewComic ? 'metadata' : isEditComic ? 'metadata' : 'chapter')
   const [metadata, setMetadata] = useState<MetadataFormValues>(defaultMetadata)
-  const [chapter, setChapter] = useState<ChapterFormValues>(defaultChapter)
+  const [chapter, setChapterForm] = useState<ChapterFormValues>(defaultChapter)
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null)
   const [publishedDTag, setPublishedDTag] = useState('')
   const editPrefilledRef = useRef(false)
+  const chapterEditPrefilledRef = useRef(false)
 
   const comicFilter = useMemo(
     () =>
@@ -166,11 +214,51 @@ export function UploadScreen() {
   }, [liveComicEvents, primaryServer])
   const existingComic = storedComic ?? liveComic ?? null
 
+  const chapterFilter = useMemo(
+    () =>
+      pubkey && chapterId && isEditChapter
+        ? [{ kinds: [30041], authors: [pubkey], '#d': [chapterId] }]
+        : null,
+    [chapterId, isEditChapter, pubkey],
+  )
+  const chapterTimeline$ = useMemo(
+    () => (chapterFilter ? eventStore.timeline(chapterFilter) : of([])),
+    [chapterFilter, eventStore],
+  )
+  const liveChapterEvents = useObservableState(chapterTimeline$) ?? EMPTY_EVENTS
+  const storedChapter = chapterId ? chapters[chapterId] : undefined
+  const liveChapter = useMemo(() => {
+    for (const event of liveChapterEvents) {
+      const parsed = parseChapterEvent(event, existingDTag ?? '')
+      if (parsed) return parsed
+    }
+    return null
+  }, [existingDTag, liveChapterEvents])
+  const existingChapter = storedChapter ?? liveChapter ?? null
+
   useEffect(() => {
     if (existingComic) {
       setComic(existingComic)
     }
   }, [existingComic, setComic])
+
+  useEffect(() => {
+    if (isEditChapter && existingComic) {
+      setMetadata(metadataFromComic(existingComic))
+    }
+  }, [existingComic, isEditChapter])
+
+  useEffect(() => {
+    if (!isEditChapter || !pubkey) return
+    const sub = service.subscribeToChapters(pubkey, existingDTag ?? '')
+    return () => sub.unsubscribe()
+  }, [existingDTag, isEditChapter, pubkey, service, syncGeneration])
+
+  useEffect(() => {
+    if (existingChapter) {
+      setStoredChapter(existingChapter)
+    }
+  }, [existingChapter, setStoredChapter])
 
   useEffect(() => {
     if (!isEditComic || !existingComic || editPrefilledRef.current) return
@@ -179,13 +267,33 @@ export function UploadScreen() {
     setStep('metadata')
   }, [existingComic, isEditComic])
 
+  useEffect(() => {
+    if (!isEditChapter || !existingChapter || chapterEditPrefilledRef.current) return
+    setChapterForm({
+      chapterTitle: existingChapter.title,
+      chapterNumber: parseChapterNumberFromDTag(existingChapter.dTag),
+      pages: [],
+      firstPageObjectUrl: null,
+    })
+    chapterEditPrefilledRef.current = true
+    setStep('chapter')
+  }, [existingChapter, isEditChapter])
+
   function reset() {
     setStep(isNewComic ? 'metadata' : isEditComic ? 'metadata' : 'chapter')
     setMetadata(metadataFromComic(isEditComic ? existingComic : null))
-    setChapter(defaultChapter())
+    setChapterForm(isEditChapter && existingChapter
+      ? {
+          chapterTitle: existingChapter.title,
+          chapterNumber: parseChapterNumberFromDTag(existingChapter.dTag),
+          pages: [],
+          firstPageObjectUrl: null,
+        }
+      : defaultChapter())
     setUploadResult(null)
     setPublishedDTag('')
     editPrefilledRef.current = Boolean(isEditComic && existingComic)
+    chapterEditPrefilledRef.current = Boolean(isEditChapter && existingChapter)
   }
 
   const handleUploadDone = useCallback((result: UploadResult) => {
@@ -198,15 +306,21 @@ export function UploadScreen() {
     setStep('done')
   }, [])
 
-  const visibleSteps = isNewComic ? STEP_ORDER : isEditComic ? EDIT_STEP_ORDER : STEP_ORDER.filter((s) => s !== 'metadata')
+  const visibleSteps = isNewComic
+    ? STEP_ORDER
+    : isEditComic
+      ? EDIT_STEP_ORDER
+      : isEditChapter
+        ? CHAPTER_EDIT_STEP_ORDER
+        : STEP_ORDER.filter((s) => s !== 'metadata')
   const visibleIndex = visibleSteps.indexOf(step)
 
-  if (isEditComic && !existingComic) {
+  if ((isEditComic && !existingComic) || (isEditChapter && !existingChapter)) {
     return (
       <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 py-6 text-zinc-100">
         <div className="mx-auto w-full max-w-lg">
-          <UploadHeader title="Edit Comic Details" />
-          <p className="text-sm text-zinc-400">Loading comic details…</p>
+          <UploadHeader title={isEditComic ? 'Edit Comic Details' : 'Edit Chapter'} />
+          <p className="text-sm text-zinc-400">Loading details…</p>
         </div>
       </div>
     )
@@ -216,7 +330,7 @@ export function UploadScreen() {
     <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 py-6 text-zinc-100">
       <div className="mx-auto w-full max-w-lg">
         <UploadHeader
-          title={isNewComic ? 'Upload Comic' : isEditComic ? 'Edit Comic Details' : 'Add Chapter'}
+          title={isNewComic ? 'Upload Comic' : isEditComic ? 'Edit Comic Details' : isEditChapter ? 'Edit Chapter' : 'Add Chapter'}
         />
 
         {step !== 'done' && (
@@ -247,15 +361,22 @@ export function UploadScreen() {
         {step === 'chapter' && (
           <ChapterStep
             values={chapter}
-            onChange={setChapter}
+            onChange={setChapterForm}
+            editing={isEditChapter}
             onNext={() => setStep('upload')}
-            onBack={() => setStep(isNewComic ? 'metadata' : 'chapter')}
+            onBack={() => {
+              if (isEditComic || isEditChapter) {
+                navigate(`/comic/${existingDTag}`)
+                return
+              }
+              setStep(isNewComic ? 'metadata' : 'chapter')
+            }}
           />
         )}
         {step === 'upload' && (
           <UploadStep
-            pages={isEditComic ? [] : chapter.pages}
-            coverFile={metadata.coverFile}
+            pages={isEditComic || isEditChapter ? [] : chapter.pages}
+            coverFile={isEditComic ? metadata.coverFile : null}
             coverMode={isEditComic ? 'file' : metadata.coverMode}
             onDone={handleUploadDone}
             onBack={() => setStep(isEditComic ? 'metadata' : 'chapter')}
@@ -267,11 +388,13 @@ export function UploadScreen() {
             existingDTag={existingDTag}
             metadata={metadata}
             chapter={isEditComic ? undefined : chapter}
+            existingChapter={isEditChapter ? existingChapter : undefined}
             pageUploads={uploadResult.pageUploads}
             coverUpload={uploadResult.coverUpload}
             serverResults={uploadResult.serverResults}
             existingComic={existingComic}
-            syncLibraryList={!isEditComic}
+            publishChapter={isEditChapter ? true : undefined}
+            syncLibraryList={!isEditComic && !isEditChapter}
             onDone={handlePublishDone}
           />
         )}

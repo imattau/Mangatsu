@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNostr } from '@/context/NostrContext'
 import { useAuthStore } from '@/stores/authStore'
+import { useComicStore } from '@/stores/comicStore'
+import { useReadStore } from '@/stores/readStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePublishQueueStore } from '@/stores/publishQueueStore'
-import type { Comic } from '@/types'
+import type { Chapter, Comic } from '@/types'
 import type { MetadataFormValues } from './MetadataStep'
 import type { ChapterFormValues } from './ChapterStep'
 import { buildPublishDraft, publishDraft, type PublishDraft, type UploadArtifact } from './publishDraft'
@@ -14,10 +16,12 @@ interface PublishStepProps {
   existingDTag?: string
   metadata: MetadataFormValues
   chapter?: ChapterFormValues
+  existingChapter?: Chapter | null
   pageUploads: UploadArtifact[]
   coverUpload: UploadArtifact | null
   serverResults: ServerResult[]
   existingComic?: Comic | null
+  publishChapter?: boolean
   syncLibraryList?: boolean
   onDone: (comicDTag: string) => void
 }
@@ -27,16 +31,21 @@ export function PublishStep({
   existingDTag,
   metadata,
   chapter,
+  existingChapter,
   pageUploads,
   coverUpload,
   serverResults,
   existingComic,
+  publishChapter,
   syncLibraryList = true,
   onDone,
 }: PublishStepProps) {
   const { service } = useNostr()
   const pubkey = useAuthStore((state) => state.pubkey)
   const secretKey = useAuthStore((state) => state.secretKey)
+  const setChapter = useComicStore((state) => state.forceSetChapter)
+  const removeChapter = useComicStore((state) => state.removeChapter)
+  const removeProgressForChapter = useReadStore((state) => state.removeProgressForChapter)
   const savedATags = useLibraryStore((state) => state.savedATags)
   const addToLibrary = useLibraryStore((state) => state.add)
   const queueDraft = usePublishQueueStore((state) => state.queueDraft)
@@ -51,13 +60,53 @@ export function PublishStep({
         existingDTag,
         metadata,
         chapter,
+        existingChapter,
         pageUploads,
         coverUpload,
         existingComic,
         publishComic: isNewComic || !chapter,
+        publishChapter,
       })
 
       await publishDraft(service, draft)
+      if (chapter) {
+        const nextChapterDTag = `${draft.comicDTag}/chapter-${chapter.chapterNumber}`
+        const pageArtifacts =
+          pageUploads.length > 0
+            ? pageUploads
+            : existingChapter
+              ? existingChapter.pageHashes.map((hash, index) => ({
+                  hash,
+                  servers: [
+                    ...(existingChapter.pageServerLists?.[index] ?? []),
+                    existingChapter.pageServers?.[index],
+                    existingChapter.blossomServer,
+                    existingComic?.blossomServer,
+                    ...(existingComic?.coverServers ?? []),
+                    existingComic?.coverServer,
+                  ].filter(Boolean) as string[],
+                }))
+              : []
+        if (existingChapter && existingChapter.dTag !== nextChapterDTag) {
+          removeChapter(existingChapter.dTag)
+          removeProgressForChapter(existingChapter.dTag)
+        }
+
+        setChapter({
+          id: draft.events.at(-1)?.id ?? existingChapter?.id ?? nextChapterDTag,
+          pubkey: pubkey ?? existingChapter?.pubkey ?? '',
+          dTag: nextChapterDTag,
+          parentDTag: draft.comicDTag,
+          title: chapter.chapterTitle,
+          pageHashes: pageArtifacts.map((upload) => upload.hash),
+          blossomServer: pageArtifacts[0]?.servers[0] ?? existingChapter?.blossomServer ?? '',
+          pageServers: pageArtifacts.map((upload) => upload.servers[0] ?? ''),
+          pageServerLists: pageArtifacts.map((upload) => upload.servers),
+          publishedAt: draft.createdAt,
+          eventId: draft.events.at(-1)?.id ?? existingChapter?.eventId ?? nextChapterDTag,
+        })
+      }
+
       if (syncLibraryList && pubkey) {
         const comicATag = `30040:${pubkey}:${draft.comicDTag}`
         addToLibrary(comicATag)

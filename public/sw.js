@@ -2,6 +2,25 @@ const SHELL_CACHE = 'mangatsu-shell-v2'
 const IMAGE_CACHE = 'mangatsu-images-v1'
 const PRECACHE_URLS = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg']
 
+async function cacheRemoteImages(urls) {
+  const cache = await caches.open(IMAGE_CACHE)
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { mode: 'no-cors', cache: 'no-store' })
+      if (response.ok || response.type === 'opaque') {
+        await cache.put(url, response.clone())
+      }
+    } catch {
+      // Ignore individual asset failures so one bad URL does not abort the pack.
+    }
+  }
+}
+
+async function removeRemoteImages(urls) {
+  const cache = await caches.open(IMAGE_CACHE)
+  await Promise.all(urls.map((url) => cache.delete(url)))
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(SHELL_CACHE).then((cache) => cache.addAll(PRECACHE_URLS))
@@ -84,4 +103,26 @@ self.addEventListener('fetch', (event) => {
       })
     )
   )
+})
+
+self.addEventListener('message', (event) => {
+  const data = event.data || {}
+  const requestId = data.requestId
+  const reply = (payload) => {
+    if (event.source && typeof event.source.postMessage === 'function') {
+      event.source.postMessage({ requestId, ...payload })
+    }
+  }
+
+  if (data.type === 'CACHE_COMIC_OFFLINE' && Array.isArray(data.urls)) {
+    event.waitUntil(
+      cacheRemoteImages(data.urls).then(() => reply({ type: data.type, ok: true })).catch(() => reply({ type: data.type, ok: false }))
+    )
+  }
+
+  if (data.type === 'REMOVE_COMIC_OFFLINE' && Array.isArray(data.urls)) {
+    event.waitUntil(
+      removeRemoteImages(data.urls).then(() => reply({ type: data.type, ok: true })).catch(() => reply({ type: data.type, ok: false }))
+    )
+  }
 })

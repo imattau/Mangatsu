@@ -106,6 +106,69 @@ describe('publishDraft', () => {
     })
   })
 
+  it('builds a chapter edit draft that deletes the old chapter and republishes the chapter event', async () => {
+    const draft = await buildPublishDraft(mockService, {
+      isNewComic: false,
+      existingDTag: 'test-comic',
+      publishComic: false,
+      publishChapter: true,
+      existingChapter: {
+        id: 'chapter-1',
+        pubkey: 'pubkey',
+        dTag: 'test-comic/chapter-1',
+        parentDTag: 'test-comic',
+        title: 'Chapter 1',
+        pageHashes: ['hash1', 'hash2'],
+        blossomServer: 'https://blossom-existing.example',
+        pageServers: ['https://blossom-existing.example', 'https://blossom-backup.example'],
+        pageServerLists: [
+          ['https://blossom-existing.example', 'https://blossom-backup.example'],
+          ['https://blossom-existing.example'],
+        ],
+        publishedAt: 123,
+        eventId: 'chapter-1',
+      },
+      metadata: {
+        title: 'Test Comic',
+        authorName: 'Author',
+        authorPubkey: 'pub',
+        authorDisplayName: '',
+        description: 'Desc',
+        tags: '',
+        language: 'en',
+        coverFile: null,
+        coverMode: 'file',
+      },
+      chapter: {
+        chapterTitle: 'Chapter 1 - Revised',
+        chapterNumber: 2,
+        pages: [],
+        firstPageObjectUrl: null,
+      },
+      pageUploads: [],
+      coverUpload: null,
+    })
+
+    expect(draft.comicDTag).toBe('test-comic')
+    expect(draft.events).toHaveLength(2)
+    expect(draft.events[0]).toMatchObject({
+      kind: 5,
+      tags: expect.arrayContaining([
+        ['a', '30041:pubkey:test-comic/chapter-1'],
+        ['k', '30041'],
+      ]),
+    })
+    expect(draft.events[1]).toMatchObject({
+      kind: 30041,
+      tags: expect.arrayContaining([
+        ['d', 'test-comic/chapter-2'],
+        ['title', 'Chapter 1 - Revised'],
+        ['page', 'blossom://hash1', 'https://blossom-existing.example', 'https://blossom-backup.example'],
+        ['page', 'blossom://hash2', 'https://blossom-existing.example', 'https://blossom-backup.example'],
+      ]),
+    })
+  })
+
   it('publishes the stored signed events in order', async () => {
     const draft = {
       comicDTag: 'test-comic',
