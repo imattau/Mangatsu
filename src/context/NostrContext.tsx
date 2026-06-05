@@ -20,9 +20,8 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { decryptFromSelf, decodeLibraryList } from '@/lib/nip51'
 import type { Nip44Signer } from '@/lib/nip51'
 import { useComicStore } from '@/stores/comicStore'
-import type { NostrEvent } from 'applesauce-core/helpers/event'
 import type { Subscription } from 'rxjs'
-import type { Comic } from '@/types'
+import { parseComicEvent } from '@/lib/comic'
 
 const NSEC_SESSION_KEY = 'mangatsu:nsec'
 
@@ -53,56 +52,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)
   })
-}
-
-function parseTag(event: NostrEvent, name: string): string {
-  return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
-}
-
-function parseTagTail(event: NostrEvent, name: string, startIndex: number): string[] {
-  const tag = event.tags.find((entry) => entry[0] === name)
-  return tag ? tag.slice(startIndex).filter(Boolean) : []
-}
-
-function parseAnyTag(event: NostrEvent, names: string[]): string {
-  for (const name of names) {
-    const value = parseTag(event, name)
-    if (value) {
-      return value
-    }
-  }
-  return ''
-}
-
-function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
-  const dTag = parseTag(event, 'd')
-  if (!dTag) {
-    return null
-  }
-
-  const coverServers = [
-    ...parseTagTail(event, 'cover', 2),
-    ...parseTagTail(event, 'image', 2),
-  ]
-  const coverServer = coverServers[0] || ''
-
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    dTag,
-    title: parseTag(event, 'title') || event.content || 'Untitled',
-    author: parseTag(event, 'author'),
-    description: parseTag(event, 'description') || event.content || '',
-    coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
-    blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
-    coverServer,
-    coverServers,
-    tags: event.tags
-      .filter((tag) => tag[0] === 't')
-      .map((tag) => tag[1])
-      .filter(Boolean),
-    eventId: event.id,
-  }
 }
 
 async function restoreExtensionAccount(

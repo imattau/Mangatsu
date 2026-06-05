@@ -29,6 +29,7 @@ describe('offline comic caching', () => {
       dTag: 'comic',
       title: 'Comic',
       author: '',
+      authorPubkey: '',
       description: '',
       coverHash: 'cover-hash',
       blossomServer: 'https://blossom.primary',

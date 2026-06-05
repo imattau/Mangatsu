@@ -133,4 +133,58 @@ describe('PublishStep', () => {
       expect(onDone).toHaveBeenCalledWith('new-comic')
     })
   })
+
+  it('shows missing assets by server when an upload is partial', () => {
+    render(
+      <PublishStep
+        isNewComic
+        metadata={{
+          title: 'New Comic',
+          authorName: '',
+          authorPubkey: '',
+          authorDisplayName: '',
+          description: '',
+          tags: '',
+          language: '',
+          coverFile: null,
+          coverMode: 'file',
+        }}
+        chapter={{
+          chapterTitle: 'Chapter 1',
+          chapterNumber: 1,
+          pages: [],
+          firstPageObjectUrl: null,
+        }}
+        pageUploads={[
+          {
+            hash: 'page-1',
+            servers: ['https://a.example'],
+            missingServers: ['https://b.example'],
+          },
+          {
+            hash: 'page-2',
+            servers: ['https://a.example'],
+            missingServers: ['https://b.example'],
+          },
+        ]}
+        coverUpload={{
+          hash: 'cover-1',
+          servers: ['https://a.example'],
+          missingServers: ['https://c.example'],
+        }}
+        serverResults={[
+          { url: 'https://a.example', uploaded: 3, total: 3 },
+          { url: 'https://b.example', uploaded: 0, total: 3 },
+          { url: 'https://c.example', uploaded: 0, total: 3 },
+        ]}
+        onDone={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText(/missing assets/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/b\.example/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/missing 2 assets: page 1, page 2/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/c\.example/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/missing 1 asset: cover/i)).toBeInTheDocument()
+  })
 })

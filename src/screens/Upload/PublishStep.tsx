@@ -51,6 +51,19 @@ export function PublishStep({
   const queueDraft = usePublishQueueStore((state) => state.queueDraft)
   const [status, setStatus] = useState<'review' | 'publishing' | 'done' | 'error'>('review')
   const [errorMsg, setErrorMsg] = useState('')
+  const uploads = [
+    ...pageUploads.map((upload, index) => ({ label: `Page ${index + 1}`, upload })),
+    ...(coverUpload ? [{ label: 'Cover', upload: coverUpload }] : []),
+  ]
+  const missingAssetsByServer = uploads.reduce<Record<string, string[]>>((acc, { label, upload }) => {
+    for (const server of upload.missingServers ?? []) {
+      if (!acc[server]) {
+        acc[server] = []
+      }
+      acc[server].push(label)
+    }
+    return acc
+  }, {})
 
   async function publish() {
     let draft: PublishDraft | null = null
@@ -180,9 +193,25 @@ export function PublishStep({
           </div>
 
           {serverResults.some((r) => r.uploaded < r.total) && (
-            <p className="text-sm text-yellow-400">
-              Some servers accepted only part of the upload — they won't be recorded in the event.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-yellow-400">
+                Some servers accepted only part of the upload. Publish will record the servers that
+                actually stored each asset, so the event can still go out.
+              </p>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Missing assets</p>
+                <div className="mt-3 space-y-3">
+                  {Object.entries(missingAssetsByServer).map(([server, labels]) => (
+                    <div key={server} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
+                      <p className="truncate text-sm font-medium text-zinc-200">{new URL(server).hostname}</p>
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Missing {labels.length} asset{labels.length === 1 ? '' : 's'}: {labels.join(', ')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
         </>
       )}

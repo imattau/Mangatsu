@@ -15,6 +15,8 @@ const mockComicEvent: NostrEvent = {
     ['d', 'dragon-ball'],
     ['title', 'Dragon Ball'],
     ['author', 'Toriyama'],
+    ['author_pubkey', 'author-pubkey'],
+    ['L', 'com.mangatsu'],
     ['t', 'action'],
   ],
   content: '',
@@ -29,6 +31,8 @@ const mockOtherComicEvent: NostrEvent = {
   tags: [
     ['d', 'naruto'],
     ['title', 'Naruto'],
+    ['author_pubkey', 'other-author-pubkey'],
+    ['L', 'com.mangatsu'],
     ['t', 'shonen'],
   ],
   content: '',
@@ -51,6 +55,9 @@ vi.mock('../context/NostrContext', () => ({
       subscribeToGlobalComics: vi.fn(() => ({ unsubscribe: vi.fn() })),
       subscribeToContactList: vi.fn(() => ({ unsubscribe: vi.fn() })),
       subscribeToComicsByAuthors: vi.fn(() => ({ unsubscribe: vi.fn() })),
+      fetchProfile: vi.fn(async (pubkey: string) =>
+        pubkey === 'author-pubkey' ? { name: 'Akira Toriyama' } : null,
+      ),
     },
   }),
 }))
@@ -109,6 +116,34 @@ describe('FeedScreen', () => {
     expect(screen.getByText('Dragon Ball')).toBeInTheDocument()
     expect(screen.queryByText('Naruto')).not.toBeInTheDocument()
     expect(screen.getByText('action')).toBeInTheDocument()
+  })
+
+  it('shows author names and filters comics by author query param', async () => {
+    mockObservableState = [mockComicEvent, mockOtherComicEvent]
+    render(
+      <MemoryRouter initialEntries={['/feed']}>
+        <FeedScreen />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Akira Toriyama')).toBeInTheDocument()
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /by akira toriyama/i }))
+
+    expect(screen.getByText(/author:/i)).toBeInTheDocument()
+    expect(screen.getAllByText('Akira Toriyama').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Naruto')).not.toBeInTheDocument()
+  })
+
+  it('shows the author directory on the authors tab', async () => {
+    mockObservableState = [mockComicEvent, mockOtherComicEvent]
+    const user = userEvent.setup()
+    render(<FeedScreen />, { wrapper: Wrapper })
+
+    await user.click(screen.getByRole('button', { name: /authors/i }))
+
+    expect(await screen.findByRole('button', { name: /akira toriyama/i })).toBeInTheDocument()
   })
 
   it('clicking Follows tab shows follows empty state when no contacts', async () => {

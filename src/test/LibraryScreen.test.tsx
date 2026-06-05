@@ -25,6 +25,7 @@ const mockComic = {
   dTag: 'comic-1',
   title: 'Comic One',
   author: '',
+  authorPubkey: 'author-pubkey',
   description: '',
   coverHash: '',
   blossomServer: '',
@@ -139,12 +140,24 @@ describe('LibraryScreen queued publishes', () => {
   })
 
   it('keeps the upload comic action visible when comics already exist', () => {
-    mockComics = { 'comic-1': mockComic }
+    mockComics = {
+      'comic-1': mockComic,
+      'foreign-comic': {
+        ...mockComic,
+        id: 'foreign-1',
+        pubkey: 'author-pubkey',
+        dTag: 'foreign-comic',
+        title: 'Foreign Comic',
+      },
+    }
 
     render(<LibraryScreen />, { wrapper: Wrapper })
 
     expect(screen.getByRole('link', { name: /upload a comic/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument()
+    expect(screen.getByText('Comic One')).toBeInTheDocument()
+    expect(screen.queryByText('Foreign Comic')).not.toBeInTheDocument()
+    expect(screen.getByText('1 total')).toBeInTheDocument()
   })
 
   it('encodes the continue-reading chapter path', () => {

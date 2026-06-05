@@ -172,7 +172,9 @@ export class NostrService {
     return { unsubscribe: () => sub.unsubscribe() }
   }
 
-  async fetchProfile(pubkey: string): Promise<{ lud16?: string; lud06?: string; name?: string } | null> {
+  async fetchProfile(
+    pubkey: string,
+  ): Promise<{ lud16?: string; lud06?: string; name?: string; picture?: string } | null> {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         sub.unsubscribe()
@@ -190,7 +192,13 @@ export class NostrService {
           clearTimeout(timeout)
           sub.unsubscribe()
           try {
-            const profile = JSON.parse(event.content) as { lud16?: string; lud06?: string; name?: string }
+            const profile = JSON.parse(event.content) as {
+              lud16?: string
+              lud06?: string
+              name?: string
+              display_name?: string
+              picture?: string
+            }
             resolve(profile)
           } catch {
             resolve(null)
