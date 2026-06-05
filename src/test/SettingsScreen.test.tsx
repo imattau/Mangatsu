@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { SettingsScreen } from '../screens/Settings'
@@ -52,6 +53,14 @@ vi.mock('../stores/nwcStore', () => ({
     sel({ connectionString: mockNwcConnectionString, setConnectionString: mockSetConnectionString }),
 }))
 
+let mockShowNsfw = false
+const mockSetShowNsfw = vi.fn((value: boolean) => { mockShowNsfw = value })
+
+vi.mock('../stores/settingsStore', () => ({
+  useSettingsStore: (sel: (s: { showNsfw: boolean; setShowNsfw: (v: boolean) => void }) => unknown) =>
+    sel({ showNsfw: mockShowNsfw, setShowNsfw: mockSetShowNsfw }),
+}))
+
 vi.mock('../stores/relayStore', () => ({
   DEFAULT_RELAYS: [
     'wss://relay.damus.io',
@@ -85,6 +94,8 @@ describe('SettingsScreen', () => {
     mockNavigate.mockClear()
     mockPublishBlossomServerList.mockClear()
     mockSetConnectionString.mockClear()
+    mockShowNsfw = false
+    mockSetShowNsfw.mockClear()
   })
 
   it('renders truncated pubkey', () => {
@@ -167,5 +178,18 @@ describe('SettingsScreen', () => {
     mockNwcConnectionString = 'nostr+walletconnect://pubkey?relay=wss://r.example&secret=abc'
     render(<SettingsScreen />, { wrapper: Wrapper })
     expect(screen.getByText('Disconnect')).toBeInTheDocument()
+  })
+
+  it('renders the NSFW toggle', () => {
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    expect(screen.getByText(/show nsfw content/i)).toBeInTheDocument()
+  })
+
+  it('toggling NSFW calls setShowNsfw', async () => {
+    const user = userEvent.setup()
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    const toggle = screen.getByRole('checkbox', { name: /show nsfw content/i })
+    await user.click(toggle)
+    expect(mockSetShowNsfw).toHaveBeenCalledWith(true)
   })
 })

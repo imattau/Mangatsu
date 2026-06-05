@@ -6,6 +6,7 @@ import { useBlossomStore, DEFAULT_BLOSSOM_SERVERS } from '@/stores/blossomStore'
 import { useRelayStore } from '@/stores/relayStore'
 import { useNostr } from '@/context/NostrContext'
 import { useNwcStore } from '@/stores/nwcStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 function truncatePubkey(pubkey: string) {
   if (pubkey.length <= 16) return pubkey
@@ -37,6 +38,8 @@ export function SettingsScreen() {
   const { service } = useNostr()
   const nwcConnectionString = useNwcStore((s) => s.connectionString)
   const setConnectionString = useNwcStore((s) => s.setConnectionString)
+  const showNsfw = useSettingsStore((s) => s.showNsfw)
+  const setShowNsfw = useSettingsStore((s) => s.setShowNsfw)
   const [nwcInput, setNwcInput] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const displayRelays = activeRelays()
@@ -229,6 +232,23 @@ export function SettingsScreen() {
               </button>
             </div>
           )}
+        </section>
+        {/* Content */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
+          <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">Content</p>
+          <label className="flex cursor-pointer items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-zinc-100">Show NSFW content</p>
+              <p className="mt-0.5 text-xs text-zinc-500">Display covers marked with a content warning</p>
+            </div>
+            <input
+              type="checkbox"
+              aria-label="Show NSFW content"
+              checked={showNsfw}
+              onChange={(e) => setShowNsfw(e.target.checked)}
+              className="accent-zinc-400 h-4 w-4"
+            />
+          </label>
         </section>
       </div>
     </div>
