@@ -21,7 +21,25 @@ function validateLud16(lud16: string): { user: string; domain: string } | null {
 
 function decodeLud06(lud06: string): string {
   const { words } = bech32.decode(lud06 as `${string}1${string}`, 1000)
-  return new TextDecoder().decode(bech32.fromWords(words))
+  const raw = new TextDecoder().decode(bech32.fromWords(words))
+  const u = new URL(raw)
+  if (u.protocol !== 'https:') throw new Error('LNURL must use https')
+  if (u.username || u.password) throw new Error('LNURL must not contain userinfo')
+  const host = u.hostname.toLowerCase()
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    /^127\./.test(host) ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
+    /^169\.254\./.test(host)
+  ) {
+    throw new Error('LNURL host not allowed')
+  }
+  return u.toString()
 }
 
 function validateCallback(callback: string, expectedDomain: string): boolean {
