@@ -50,6 +50,8 @@ vi.mock('applesauce-react/hooks', () => ({
   useObservableState: () => mockObservableState,
 }))
 
+const mockPublishContactList = vi.fn().mockResolvedValue(undefined)
+
 vi.mock('../context/NostrContext', () => ({
   useNostr: () => ({
     service: {
@@ -59,6 +61,7 @@ vi.mock('../context/NostrContext', () => ({
       fetchProfile: vi.fn(async (pubkey: string) =>
         pubkey === 'author-pubkey' ? { name: 'Akira Toriyama' } : null,
       ),
+      publishContactList: mockPublishContactList,
     },
   }),
 }))
@@ -92,6 +95,7 @@ describe('FeedScreen', () => {
   beforeEach(() => {
     mockObservableState = []
     mockShowNsfw = false
+    mockPublishContactList.mockClear()
   })
 
   it('renders Global and Follows tabs', () => {
@@ -205,5 +209,28 @@ describe('FeedScreen', () => {
     render(<FeedScreen />, { wrapper: Wrapper })
     expect(screen.getByText('Adult Comic')).toBeInTheDocument()
     expect(screen.queryByText('NSFW')).not.toBeInTheDocument()
+  })
+
+  it('allows following and unfollowing authors on the authors tab', async () => {
+    mockObservableState = [mockComicEvent]
+    const user = userEvent.setup()
+    render(<FeedScreen />, { wrapper: Wrapper })
+
+    await user.click(screen.getByRole('button', { name: /authors/i }))
+
+    // Initially, follow button is visible
+    const followBtn = await screen.findByRole('button', { name: /^follow$/i })
+    expect(followBtn).toBeInTheDocument()
+
+    // Click to follow
+    await user.click(followBtn)
+    expect(mockPublishContactList).toHaveBeenCalledWith(['author-pubkey'])
+
+    // Button updates to Unfollow
+    expect(screen.getByRole('button', { name: /^unfollow$/i })).toBeInTheDocument()
+
+    // Click to unfollow
+    await user.click(screen.getByRole('button', { name: /^unfollow$/i }))
+    expect(mockPublishContactList).toHaveBeenLastCalledWith([])
   })
 })

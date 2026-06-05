@@ -302,6 +302,21 @@ export class NostrService {
     const signed = await account.signer.signEvent(template)
     await this.publishEvent(signed)
   }
+
+  async publishContactList(followedPubkeys: string[]): Promise<void> {
+    const account = this.accountManager.active
+    if (!account) return
+
+    const template = {
+      kind: 3,
+      tags: followedPubkeys.map((pk) => ['p', pk]),
+      content: '',
+      created_at: Math.floor(Date.now() / 1000),
+    }
+
+    const signed = await account.signer.signEvent(template)
+    await this.publishEvent(signed)
+  }
 }
 
 export const nostrService = new NostrService()

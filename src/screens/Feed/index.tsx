@@ -220,6 +220,22 @@ export function FeedScreen() {
     }
   }, [authorPubkeys, authorProfiles, service, syncGeneration])
 
+  function handleToggleFollow(authorPubkey: string) {
+    const isFollowing = followedPubkeys.includes(authorPubkey)
+    const nextFollows = isFollowing
+      ? followedPubkeys.filter((pk) => pk !== authorPubkey)
+      : [...followedPubkeys, authorPubkey]
+    
+    // optimistic update
+    setFollowedPubkeys(nextFollows)
+
+    service.publishContactList(nextFollows).catch((err) => {
+      console.error('Failed to update follow list:', err)
+      // revert on failure
+      setFollowedPubkeys(followedPubkeys)
+    })
+  }
+
   function updateSearchParams(next: { tag?: string | null; author?: string | null }) {
     const updated = new URLSearchParams(searchParams)
     if (next.tag !== undefined) {
@@ -329,32 +345,62 @@ export function FeedScreen() {
             </section>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {authorDirectory.map((author) => (
-                <button
-                  key={author.pubkey}
-                  type="button"
-                  onClick={() => updateSearchParams({ author: author.pubkey })}
-                  className="rounded-[1.5rem] border border-zinc-800 bg-zinc-950/70 p-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
-                >
-                  <div className="flex items-center gap-3">
-                    <AuthorAvatar
-                      pubkey={author.pubkey}
-                      name={authorLabel(author.pubkey)}
-                      picture={authorPicture(author.pubkey)}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Author</p>
-                      <p className="mt-2 truncate text-base font-medium text-zinc-100">
-                        {authorLabel(author.pubkey)}
-                      </p>
+              {authorDirectory.map((author) => {
+                const isFollowing = followedPubkeys.includes(author.pubkey)
+                return (
+                  <div
+                    key={author.pubkey}
+                    className="relative flex flex-col justify-between rounded-[1.5rem] border border-zinc-800 bg-zinc-950/70 p-5 transition hover:border-zinc-600 hover:bg-zinc-900"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <button
+                        type="button"
+                        onClick={() => updateSearchParams({ author: author.pubkey })}
+                        className="flex items-center gap-3 text-left focus:outline-none min-w-0 flex-1 group"
+                      >
+                        <AuthorAvatar
+                          pubkey={author.pubkey}
+                          name={authorLabel(author.pubkey)}
+                          picture={authorPicture(author.pubkey)}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Author</p>
+                          <p className="mt-1 truncate text-base font-medium text-zinc-100 group-hover:text-white group-hover:underline">
+                            {authorLabel(author.pubkey)}
+                          </p>
+                        </div>
+                      </button>
+
+                      {pubkey && pubkey !== author.pubkey && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleToggleFollow(author.pubkey)
+                          }}
+                          className={`rounded-full px-4 py-1.5 text-xs font-semibold border transition shrink-0 ${
+                            isFollowing
+                              ? 'border-zinc-700 bg-transparent text-zinc-400 hover:border-red-800 hover:text-red-400'
+                              : 'border-zinc-200 bg-zinc-200 text-zinc-950 hover:bg-zinc-100 hover:border-zinc-100'
+                          }`}
+                        >
+                          {isFollowing ? 'Unfollow' : 'Follow'}
+                        </button>
+                      )}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => updateSearchParams({ author: author.pubkey })}
+                      className="mt-4 text-left focus:outline-none"
+                    >
+                      <p className="text-sm text-zinc-400">
+                        {author.count} comic{author.count === 1 ? '' : 's'}
+                      </p>
+                      <p className="mt-1 truncate text-xs font-mono text-zinc-600">{author.pubkey}</p>
+                    </button>
                   </div>
-                  <p className="mt-3 text-sm text-zinc-500">
-                    {author.count} comic{author.count === 1 ? '' : 's'}
-                  </p>
-                  <p className="mt-2 truncate text-xs font-mono text-zinc-600">{author.pubkey}</p>
-                </button>
-              ))}
+                )
+              })}
             </div>
           )
         ) : activeComics.length === 0 ? (
