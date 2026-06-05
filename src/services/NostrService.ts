@@ -1,5 +1,6 @@
 import { EventStore } from 'applesauce-core'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
+import { createReplaceableAddress } from 'applesauce-core/helpers/event'
 import { RelayPool } from 'applesauce-relay'
 import type { PublishResponse } from 'applesauce-relay'
 import { AccountManager } from 'applesauce-accounts'
@@ -141,6 +142,30 @@ export class NostrService {
     })
   }
 
+  subscribeToComicComments(
+    pubkey: string,
+    dTag: string,
+    onEvent?: (event: NostrEvent) => void,
+  ): Subscription {
+    const source$ = this.relayPool.subscription(
+      this.getRelays(),
+      [
+        {
+          kinds: [1111],
+          '#A': [createReplaceableAddress(30040, pubkey, dTag)],
+          limit: 100,
+        },
+      ],
+      { eventStore: this.eventStore },
+    )
+    return source$.subscribe({
+      next: (event) => {
+        this.eventStore.add(event)
+        onEvent?.(event)
+      },
+    })
+  }
+
   subscribeToUserLists(
     pubkey: string,
     onRelays: (urls: string[]) => void,
@@ -174,7 +199,7 @@ export class NostrService {
 
   async fetchProfile(
     pubkey: string,
-  ): Promise<{ lud16?: string; lud06?: string; name?: string; picture?: string } | null> {
+  ): Promise<{ lud16?: string; lud06?: string; name?: string; display_name?: string; picture?: string } | null> {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         sub.unsubscribe()

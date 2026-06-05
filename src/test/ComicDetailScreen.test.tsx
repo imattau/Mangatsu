@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { ComicDetailScreen } from '../screens/ComicDetail'
 import type { Comic, Chapter, ReadingProgress } from '../types'
 
@@ -39,6 +40,23 @@ const mockComic: Comic = {
   blossomServer: 'https://blossom.example',
   tags: ['action', 'adventure'],
   eventId: 'ev1',
+}
+
+const mockComicEvent: NostrEvent = {
+  id: 'ev1',
+  kind: 30040,
+  pubkey: 'abc',
+  created_at: 1700000000,
+  content: '',
+  tags: [
+    ['d', 'one-piece'],
+    ['title', 'One Piece'],
+    ['author', 'Oda'],
+    ['author_pubkey', 'author-pubkey'],
+    ['t', 'action'],
+    ['t', 'adventure'],
+  ],
+  sig: 'sig',
 }
 
 const mockChapter1: Chapter = {
@@ -79,7 +97,10 @@ const mockRemoveFromLibrary = vi.fn()
 const mockRemoveProgressForChapter = vi.fn()
 
 vi.mock('applesauce-react/hooks', () => ({
-  useEventStore: () => ({ timeline: vi.fn(() => ({ subscribe: vi.fn() })) }),
+  useEventStore: () => ({
+    timeline: vi.fn(() => ({ subscribe: vi.fn() })),
+    getEvent: vi.fn(() => mockComicEvent),
+  }),
   useObservableState: () => [],
 }))
 
@@ -88,6 +109,7 @@ vi.mock('../context/NostrContext', () => ({
     service: {
       eventFactory: { build: mockEventFactoryBuild },
       subscribeToChapters: vi.fn(() => ({ unsubscribe: vi.fn() })),
+      subscribeToComicComments: vi.fn(() => ({ unsubscribe: vi.fn() })),
       publishEvent: mockPublishEvent,
       publishLibraryList: mockPublishLibraryList,
     },
@@ -97,6 +119,11 @@ vi.mock('../context/NostrContext', () => ({
 vi.mock('../stores/authStore', () => ({
   useAuthStore: (sel: (s: { pubkey: string | null }) => unknown) =>
     sel({ pubkey: 'abc' }),
+}))
+
+vi.mock('../stores/relayStore', () => ({
+  DEFAULT_RELAYS: ['wss://relay.example'],
+  useRelayStore: (sel: (s: { relays: string[] }) => unknown) => sel({ relays: [] }),
 }))
 
 vi.mock('../stores/comicStore', () => ({
@@ -357,6 +384,15 @@ describe('ComicDetailScreen', () => {
       '/comic/one-piece/chapter/one-piece%2Fchapter-1/edit',
     )
     expect(screen.getByRole('button', { name: /delete chapter romance dawn/i })).toBeInTheDocument()
+  })
+
+  it('renders the comments section after the chapter list', () => {
+    mockChapters = [mockChapter1, mockChapter2]
+    mockProgress = {}
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
+
+    expect(screen.getByText(/comments/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /post comment/i })).toBeInTheDocument()
   })
 
   it('deletes a chapter and removes local progress state', async () => {

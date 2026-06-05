@@ -17,6 +17,7 @@ import {
   groupBlossomAssetsByServer,
   probeBlossomAssetExists,
 } from '@/lib/blossom'
+import { ComicCommentsSection } from '@/components/ComicComments'
 import {
   areTargetsCached,
   cacheTargetsForOffline,
@@ -224,6 +225,14 @@ export function ComicDetailScreen() {
   }, [foreignEvents, primaryServer])
 
   const comic: Comic | undefined = storedComic ?? foreignComic ?? undefined
+  const comicEvent = useMemo(() => {
+    if (!comic) return null
+    return (
+      eventStore.getEvent({ kind: 30040, pubkey: comic.pubkey, identifier: comic.dTag }) ??
+      eventStore.getEvent(comic.eventId) ??
+      null
+    )
+  }, [comic, eventStore, syncGeneration])
 
   useEffect(() => {
     if (comic) {
@@ -651,8 +660,8 @@ export function ComicDetailScreen() {
         )}
 
         {blossomServers.length > 0 && (
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-            <div className="flex items-start justify-between gap-3">
+          <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+            <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
                   Blossom servers
@@ -676,7 +685,7 @@ export function ComicDetailScreen() {
               >
                 {isCheckingBlossomAssets ? 'Checking' : allBlossomAssetsReachable ? 'Available' : 'Incomplete'}
               </div>
-            </div>
+            </summary>
             <ul className="mt-3 space-y-2">
               {blossomServers.map((entry) => {
                 const availability = blossomAvailability[entry.server]
@@ -717,7 +726,7 @@ export function ComicDetailScreen() {
                 )
               })}
             </ul>
-          </section>
+          </details>
         )}
 
         {chapters.length === 0 ? (
@@ -800,6 +809,10 @@ export function ComicDetailScreen() {
               })}
             </ul>
           </section>
+        )}
+
+        {comic && (
+          <ComicCommentsSection comic={comic} comicEvent={comicEvent} />
         )}
       </div>
     </div>
