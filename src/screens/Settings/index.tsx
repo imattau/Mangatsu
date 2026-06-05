@@ -7,6 +7,8 @@ import { useRelayStore } from '@/stores/relayStore'
 import { useNostr } from '@/context/NostrContext'
 import { useNwcStore } from '@/stores/nwcStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { webTorrentService } from '@/services/WebTorrentService'
+import { useEffect } from 'react'
 
 function truncatePubkey(pubkey: string) {
   if (pubkey.length <= 16) return pubkey
@@ -46,6 +48,19 @@ export function SettingsScreen() {
   const [newUrl, setNewUrl] = useState('')
   const [isBlossomOpen, setIsBlossomOpen] = useState(false)
   const [isRelaysOpen, setIsRelaysOpen] = useState(false)
+  const [isWebTorrentOpen, setIsWebTorrentOpen] = useState(false)
+  
+  const [stats, setStats] = useState(() => webTorrentService.getStats())
+
+  useEffect(() => {
+    if (!enableWebTorrent) return
+
+    const interval = setInterval(() => {
+      setStats(webTorrentService.getStats())
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [enableWebTorrent])
   const displayRelays = activeRelays()
   const usingDefaultRelays = userRelays.length === 0
 
@@ -295,22 +310,67 @@ export function SettingsScreen() {
 
         {/* WebTorrent */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
-          <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">WebTorrent</p>
-          <label className="flex cursor-pointer items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-zinc-100">Enable WebTorrent sharing</p>
-              <p className="mt-0.5 text-xs text-zinc-500">
-                Use WebRTC peer-to-peer sharing to download and seed comic chapters (alleviates Blossom servers)
-              </p>
-            </div>
-            <input
-              type="checkbox"
-              aria-label="Enable WebTorrent sharing"
-              checked={enableWebTorrent}
-              onChange={(e) => setEnableWebTorrent(e.target.checked)}
-              className="accent-zinc-400 h-4 w-4"
-            />
-          </label>
+          <button
+            onClick={() => setIsWebTorrentOpen(!isWebTorrentOpen)}
+            className="flex w-full items-center justify-between text-left focus:outline-none"
+            aria-expanded={isWebTorrentOpen}
+          >
+            <span className="text-xs uppercase tracking-[0.35em] text-zinc-500 font-semibold">WebTorrent</span>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-4 w-4 text-zinc-500 transition-transform duration-200 ${isWebTorrentOpen ? 'rotate-180' : ''}`}
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+          
+          <div className={`mt-4 ${isWebTorrentOpen ? 'block' : 'hidden'}`}>
+            <label className="flex cursor-pointer items-center justify-between gap-4">
+              <div>
+                <p className="text-sm text-zinc-100">Enable WebTorrent sharing</p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Use WebRTC peer-to-peer sharing to download and seed comic chapters (alleviates Blossom servers)
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                aria-label="Enable WebTorrent sharing"
+                checked={enableWebTorrent}
+                onChange={(e) => setEnableWebTorrent(e.target.checked)}
+                className="accent-zinc-400 h-4 w-4"
+              />
+            </label>
+
+            {enableWebTorrent && (
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-900 pt-4 text-xs">
+                <div className="rounded-xl border border-zinc-900 bg-zinc-900/20 p-3">
+                  <p className="text-zinc-500 uppercase tracking-wider text-[0.6rem]">Active Torrents</p>
+                  <p className="mt-1 font-mono text-sm font-semibold text-zinc-200">{stats.activeTorrents}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-900 bg-zinc-900/20 p-3">
+                  <p className="text-zinc-500 uppercase tracking-wider text-[0.6rem]">Connected Peers</p>
+                  <p className="mt-1 font-mono text-sm font-semibold text-zinc-200">{stats.numPeers}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-900 bg-zinc-900/20 p-3">
+                  <p className="text-zinc-500 uppercase tracking-wider text-[0.6rem]">Download Speed</p>
+                  <p className="mt-1 font-mono text-sm font-semibold text-zinc-200">
+                    {(stats.downloadSpeed / 1024).toFixed(1)} KB/s
+                  </p>
+                </div>
+                <div className="rounded-xl border border-zinc-900 bg-zinc-900/20 p-3">
+                  <p className="text-zinc-500 uppercase tracking-wider text-[0.6rem]">Upload Speed</p>
+                  <p className="mt-1 font-mono text-sm font-semibold text-zinc-200">
+                    {(stats.uploadSpeed / 1024).toFixed(1)} KB/s
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </div>

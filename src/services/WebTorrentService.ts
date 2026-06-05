@@ -149,6 +149,30 @@ export class WebTorrentService {
     }
     this.torrents.clear()
   }
+
+  getStats() {
+    const client = this.client
+    if (!client) {
+      return {
+        activeTorrents: 0,
+        downloadSpeed: 0,
+        uploadSpeed: 0,
+        numPeers: 0,
+      }
+    }
+
+    let numPeers = 0
+    client.torrents.forEach((t) => {
+      numPeers += t.numPeers
+    })
+
+    return {
+      activeTorrents: client.torrents.length,
+      downloadSpeed: client.downloadSpeed,
+      uploadSpeed: client.uploadSpeed,
+      numPeers,
+    }
+  }
 }
 
 export const webTorrentService = new WebTorrentService()
