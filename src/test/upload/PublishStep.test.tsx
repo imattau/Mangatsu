@@ -188,3 +188,73 @@ describe('PublishStep', () => {
     expect(screen.getByText(/missing 1 asset: cover/i)).toBeInTheDocument()
   })
 })
+
+describe('buildPublishDraft — nsfw flag', () => {
+  it('emits content-warning tag when nsfw is true', async () => {
+    const { buildPublishDraft } = await vi.importActual<typeof import('../../screens/Upload/publishDraft')>('../../screens/Upload/publishDraft')
+    const signer = {
+      signEvent: vi.fn(async (template: object) => ({ ...template, id: 'id1', sig: 'sig1' })),
+    }
+    const service = {
+      accountManager: { active: { signer } },
+    } as unknown as Parameters<typeof buildPublishDraft>[0]
+
+    const metadata = {
+      title: 'Test Comic',
+      authorName: '',
+      authorPubkey: '',
+      authorDisplayName: '',
+      description: '',
+      tags: '',
+      language: '',
+      coverFile: null,
+      coverMode: 'file' as const,
+      nsfw: true,
+    }
+
+    const draft = await buildPublishDraft(service, {
+      isNewComic: true,
+      metadata,
+      pageUploads: [],
+      coverUpload: null,
+    })
+
+    const comicEvent = draft.events.find((e) => e.kind === 30040)
+    expect(comicEvent).toBeDefined()
+    expect(comicEvent!.tags).toContainEqual(['content-warning', 'NSFW'])
+  })
+
+  it('does not emit content-warning tag when nsfw is false', async () => {
+    const { buildPublishDraft } = await vi.importActual<typeof import('../../screens/Upload/publishDraft')>('../../screens/Upload/publishDraft')
+    const signer = {
+      signEvent: vi.fn(async (template: object) => ({ ...template, id: 'id1', sig: 'sig1' })),
+    }
+    const service = {
+      accountManager: { active: { signer } },
+    } as unknown as Parameters<typeof buildPublishDraft>[0]
+
+    const metadata = {
+      title: 'Test Comic',
+      authorName: '',
+      authorPubkey: '',
+      authorDisplayName: '',
+      description: '',
+      tags: '',
+      language: '',
+      coverFile: null,
+      coverMode: 'file' as const,
+      nsfw: false,
+    }
+
+    const draft = await buildPublishDraft(service, {
+      isNewComic: true,
+      metadata,
+      pageUploads: [],
+      coverUpload: null,
+    })
+
+    const comicEvent = draft.events.find((e) => e.kind === 30040)
+    expect(comicEvent).toBeDefined()
+    expect(comicEvent!.tags.every((t: string[]) => t[0] !== 'content-warning')).toBe(true)
+  })
+})
