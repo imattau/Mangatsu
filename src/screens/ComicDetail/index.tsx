@@ -575,9 +575,12 @@ export function ComicDetailScreen() {
                     <span className="hidden sm:inline">{adding ? 'Adding…' : 'Add to Library'}</span>
                   </button>
                 )}
-                {comic.pubkey && comic.pubkey !== myPubkey && (
-                  <ZapButton authorPubkey={comic.pubkey} />
-                )}
+                {(() => {
+                  const targetPubkey = comic.authorPubkey || comic.pubkey
+                  return targetPubkey && targetPubkey !== myPubkey ? (
+                    <ZapButton authorPubkey={targetPubkey} />
+                  ) : null
+                })()}
                 {isForeign && myPubkey && (
                   <button
                     type="button"
