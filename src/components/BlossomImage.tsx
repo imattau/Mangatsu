@@ -62,7 +62,11 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
     [blossomServers, cachedUrl, cachedUrlAllowed, explicitServers, hash, server],
   )
 
-  const [resolvedSrc, setResolvedSrc] = useState(PLACEHOLDER_SRC)
+  const [resolvedSrc, setResolvedSrc] = useState(() => {
+    const memCached = webTorrentService.getResolvedBlobUrl(hash)
+    if (memCached) return memCached
+    return cachedUrlAllowed ? cachedUrl : PLACEHOLDER_SRC
+  })
   const nextIndexRef = useRef(1)
 
   // Reset probing state whenever candidates change or torrent is updated.
@@ -70,21 +74,32 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
   useEffect(() => {
     let cancelled = false
     let objectUrl = ''
-    setResolvedSrc(PLACEHOLDER_SRC)
+
+    // Only reset to placeholder if we don't have a cached version ready in memory
+    const existing = webTorrentService.getResolvedBlobUrl(hash)
+    if (!existing) {
+      setResolvedSrc(PLACEHOLDER_SRC)
+    }
     nextIndexRef.current = 1
 
     async function loadWithFallback() {
+      if (existing) {
+        setResolvedSrc(existing)
+        return
+      }
+
       if (torrent) {
         try {
-          // Add a 4-second timeout for WebTorrent resolution (metadata lookup & file fetching)
+          // Add a 1.5-second timeout for WebTorrent resolution (metadata & file fetching)
           const torrentPromise = webTorrentService.getFile(torrent, hash)
           const timeoutPromise = new Promise<Blob>((_, reject) =>
-            setTimeout(() => reject(new Error('WebTorrent timed out')), 4000)
+            setTimeout(() => reject(new Error('WebTorrent timed out')), 1500)
           )
           
           const blob = await Promise.race([torrentPromise, timeoutPromise])
           if (cancelled) return
           objectUrl = URL.createObjectURL(blob)
+          webTorrentService.setResolvedBlobUrl(hash, objectUrl)
           setResolvedSrc(objectUrl)
           return
         } catch (err) {

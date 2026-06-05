@@ -145,6 +145,16 @@ export class WebTorrentService {
     })
   }
 
+  private resolvedBlobUrls = new Map<string, string>()
+
+  getResolvedBlobUrl(hash: string): string | undefined {
+    return this.resolvedBlobUrls.get(hash)
+  }
+
+  setResolvedBlobUrl(hash: string, url: string) {
+    this.resolvedBlobUrls.set(hash, url)
+  }
+
   createObjectUrl(blob: Blob): string {
     const url = URL.createObjectURL(blob)
     this.objectUrls.add(url)
@@ -164,6 +174,7 @@ export class WebTorrentService {
       URL.revokeObjectURL(url)
     }
     this.objectUrls.clear()
+    this.resolvedBlobUrls.clear()
 
     if (this.client) {
       this.client.destroy()

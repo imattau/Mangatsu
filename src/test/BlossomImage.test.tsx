@@ -10,6 +10,8 @@ vi.mock('../services/WebTorrentService', () => {
     webTorrentService: {
       getFile: vi.fn(),
       isWebTorrentEnabled: vi.fn().mockReturnValue(true),
+      getResolvedBlobUrl: vi.fn(),
+      setResolvedBlobUrl: vi.fn(),
     },
   }
 })
