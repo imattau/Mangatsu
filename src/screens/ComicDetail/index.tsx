@@ -92,6 +92,7 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
     dTag,
     title: parseTag(event, 'title') || event.content || 'Untitled',
     author: parseTag(event, 'author'),
+    authorPubkey: parseTag(event, 'author_pubkey'),
     description: parseTag(event, 'description') || event.content || '',
     coverHash,
     coverServer,
@@ -485,6 +486,7 @@ export function ComicDetailScreen() {
         ['title', comic.title],
       ]
       if (comic.author) tags.push(['author', comic.author])
+      if (comic.authorPubkey) tags.push(['author_pubkey', comic.authorPubkey])
       if (comic.description) tags.push(['description', comic.description])
       if (comic.coverHash) {
         tags.push(['cover', comic.coverHash, comic.coverServer || comic.blossomServer || primaryServer() || ''])

@@ -51,6 +51,7 @@ describe('publishDraft', () => {
     expect(draft.events[0]).toMatchObject({
       kind: 30040,
       tags: expect.arrayContaining([
+        ['author_pubkey', 'pub'],
         ['cover', 'cover-hash', 'https://blossom-a.example', 'https://blossom-cover.example'],
       ]),
     })
@@ -74,6 +75,7 @@ describe('publishDraft', () => {
         dTag: 'test-comic',
         title: 'Existing Title',
         author: 'Author',
+        authorPubkey: 'pubkey',
         description: 'Old desc',
         coverHash: 'existing-cover',
         blossomServer: 'https://blossom-existing.example',

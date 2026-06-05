@@ -33,6 +33,7 @@ const mockComic: Comic = {
   dTag: 'one-piece',
   title: 'One Piece',
   author: 'Oda',
+  authorPubkey: 'author-pubkey',
   description: '',
   coverHash: 'coverhash',
   blossomServer: 'https://blossom.example',

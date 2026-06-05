@@ -25,6 +25,7 @@ const mockComic = {
   dTag: 'comic-1',
   title: 'Comic One',
   author: '',
+  authorPubkey: 'author-pubkey',
   description: '',
   coverHash: '',
   blossomServer: '',

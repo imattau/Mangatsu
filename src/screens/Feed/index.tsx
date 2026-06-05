@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { BrandMark } from '@/components/BrandMark'
 import { HeaderNav } from '@/components/HeaderNav'
 import { useEventStore, useObservableState } from 'applesauce-react/hooks'
-import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { of } from 'rxjs'
 import { useNostr } from '@/context/NostrContext'
 import { useAuthStore } from '@/stores/authStore'
@@ -11,62 +10,40 @@ import { useBlossomStore } from '@/stores/blossomStore'
 import { DEFAULT_RELAYS, useRelayStore } from '@/stores/relayStore'
 import type { Comic } from '@/types'
 import { BlossomImage } from '@/components/BlossomImage'
+import type { NostrEvent } from 'applesauce-core/helpers/event'
+import { parseComicEvent } from '@/lib/comic'
 
-// ---------------------------------------------------------------------------
-// Helpers (same as LibraryScreen)
-// ---------------------------------------------------------------------------
+const EMPTY_EVENTS: NostrEvent[] = []
+type Tab = 'global' | 'follows' | 'authors'
 
-function parseTag(event: NostrEvent, name: string) {
-  return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
-}
-
-function parseTagTail(event: NostrEvent, name: string, startIndex: number) {
-  const tag = event.tags.find((entry) => entry[0] === name)
-  return tag ? tag.slice(startIndex).filter(Boolean) : []
-}
-
-function parseAnyTag(event: NostrEvent, names: string[]) {
-  for (const name of names) {
-    const value = parseTag(event, name)
-    if (value) return value
-  }
-  return ''
+type AuthorProfile = {
+  name: string | null
+  picture: string | null
 }
 
 function isMangatsuEvent(event: NostrEvent) {
   return event.tags.some((tag) => tag[0] === 'L' && tag[1] === 'com.mangatsu')
 }
 
-function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
-  const dTag = parseTag(event, 'd')
-  if (!dTag) return null
-  const coverServers = [
-    ...parseTagTail(event, 'cover', 2),
-    ...parseTagTail(event, 'image', 2),
-  ]
-  const coverServer = coverServers[0] || ''
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    dTag,
-    title: parseTag(event, 'title') || event.content || 'Untitled',
-    author: parseTag(event, 'author'),
-    description: parseTag(event, 'description') || event.content || '',
-    coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
-    blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
-    coverServer,
-    coverServers,
-    tags: event.tags.filter((t) => t[0] === 't').map((t) => t[1]).filter(Boolean),
-    eventId: event.id,
-  }
-}
-
 function parseFollowedPubkeys(event: NostrEvent): string[] {
   return event.tags.filter((t) => t[0] === 'p').map((t) => t[1]).filter(Boolean)
 }
 
-const EMPTY_EVENTS: NostrEvent[] = []
-type Tab = 'global' | 'follows'
+function truncatePubkey(pubkey: string) {
+  if (pubkey.length <= 16) return pubkey
+  return `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`
+}
+
+function resolveAuthorPubkey(comic: Comic) {
+  return comic.authorPubkey || comic.pubkey
+}
+
+function authorInitials(label: string) {
+  const parts = label.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'A'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
+}
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -75,7 +52,7 @@ type Tab = 'global' | 'follows'
 export function FeedScreen() {
   const { service, syncGeneration } = useNostr()
   const eventStore = useEventStore()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const pubkey = useAuthStore((s) => s.pubkey)
   const primaryServer = useBlossomStore((s) => s.primaryServer)
   const relayUrls = useRelayStore((s) => s.relays)
@@ -87,6 +64,7 @@ export function FeedScreen() {
 
   const [activeTab, setActiveTab] = useState<Tab>('global')
   const [followedPubkeys, setFollowedPubkeys] = useState<string[]>([])
+  const [authorProfiles, setAuthorProfiles] = useState<Record<string, AuthorProfile | null>>({})
 
   // Subscribe to global comics
   useEffect(() => {
@@ -139,6 +117,7 @@ export function FeedScreen() {
 
   const server = primaryServer()
   const activeTag = searchParams.get('tag')?.trim() ?? ''
+  const activeAuthor = searchParams.get('author')?.trim() ?? ''
 
   const globalComics = useMemo(
     () =>
@@ -156,15 +135,109 @@ export function FeedScreen() {
         if (!isMangatsuEvent(e)) return []
         const c = parseComicEvent(e, server)
         return c ? [c] : []
-      }),
+    }),
     [followsEvents, server],
   )
 
-  const activeComics = useMemo(() => {
-    const comics = activeTab === 'global' ? globalComics : followsComics
-    if (!activeTag) return comics
-    return comics.filter((comic) => comic.tags.includes(activeTag))
-  }, [activeTag, activeTab, followsComics, globalComics])
+  const feedComics = activeTab === 'follows' ? followsComics : globalComics
+  const tagFilteredComics = useMemo(
+    () => (activeTag ? feedComics.filter((comic) => comic.tags.includes(activeTag)) : feedComics),
+    [activeTag, feedComics],
+  )
+  const activeComics = useMemo(
+    () =>
+      activeAuthor
+        ? tagFilteredComics.filter((comic) => resolveAuthorPubkey(comic) === activeAuthor)
+        : tagFilteredComics,
+    [activeAuthor, tagFilteredComics],
+  )
+
+  const authorDirectory = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        pubkey: string
+        count: number
+        latest: Comic
+      }
+    >()
+
+    for (const comic of tagFilteredComics) {
+      const authorPubkey = resolveAuthorPubkey(comic)
+      const existing = groups.get(authorPubkey)
+      if (!existing) {
+        groups.set(authorPubkey, { pubkey: authorPubkey, count: 1, latest: comic })
+        continue
+      }
+      existing.count += 1
+      if (comic.title.localeCompare(existing.latest.title) < 0) {
+        existing.latest = comic
+      }
+    }
+
+    return [...groups.values()].sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count
+      return a.latest.title.localeCompare(b.latest.title)
+    })
+  }, [tagFilteredComics])
+
+  const authorPubkeys = useMemo(
+    () => [...new Set(tagFilteredComics.map((comic) => resolveAuthorPubkey(comic)).filter(Boolean))],
+    [tagFilteredComics],
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    const missing = authorPubkeys.filter((authorPubkey) => authorProfiles[authorPubkey] === undefined)
+    if (missing.length === 0) return
+
+    void Promise.all(
+      missing.map(async (authorPubkey) => {
+        const profile = await service.fetchProfile(authorPubkey)
+        return [
+          authorPubkey,
+          {
+            name: profile?.name?.trim() || null,
+            picture: profile?.picture?.trim() || null,
+          },
+        ] as const
+      }),
+    ).then((results) => {
+      if (cancelled) return
+      setAuthorProfiles((current) => {
+        const next = { ...current }
+        for (const [authorPubkey, profile] of results) {
+          next[authorPubkey] = profile
+        }
+        return next
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [authorPubkeys, authorProfiles, service, syncGeneration])
+
+  function updateSearchParams(next: { tag?: string | null; author?: string | null }) {
+    const updated = new URLSearchParams(searchParams)
+    if (next.tag !== undefined) {
+      if (next.tag) updated.set('tag', next.tag)
+      else updated.delete('tag')
+    }
+    if (next.author !== undefined) {
+      if (next.author) updated.set('author', next.author)
+      else updated.delete('author')
+    }
+    setSearchParams(updated)
+  }
+
+  function authorLabel(authorPubkey: string) {
+    return authorProfiles[authorPubkey]?.name || truncatePubkey(authorPubkey)
+  }
+
+  function authorPicture(authorPubkey: string) {
+    return authorProfiles[authorPubkey]?.picture || null
+  }
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 py-4 text-zinc-100">
@@ -185,7 +258,7 @@ export function FeedScreen() {
 
         {/* Tabs */}
         <div className="flex gap-1 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-1">
-          {(['global', 'follows'] as Tab[]).map((tab) => (
+          {(['global', 'follows', 'authors'] as Tab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -195,23 +268,44 @@ export function FeedScreen() {
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              {tab === 'global' ? 'Global' : 'Follows'}
+              {tab === 'global' ? 'Global' : tab === 'follows' ? 'Follows' : 'Authors'}
             </button>
           ))}
         </div>
 
-        {activeTag ? (
+        {activeTag || activeAuthor ? (
           <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm">
-            <span className="text-zinc-500">Tag filter:</span>
-            <span className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-zinc-100">
-              {activeTag}
-            </span>
-            <Link
-              to="/feed"
+            {activeTag ? (
+              <>
+                <span className="text-zinc-500">Tag:</span>
+                <button
+                  type="button"
+                  onClick={() => updateSearchParams({ tag: null })}
+                  className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-zinc-100 transition hover:border-zinc-500"
+                >
+                  {activeTag}
+                </button>
+              </>
+            ) : null}
+            {activeAuthor ? (
+              <>
+                <span className="text-zinc-500">Author:</span>
+                <button
+                  type="button"
+                  onClick={() => updateSearchParams({ author: null })}
+                  className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-zinc-100 transition hover:border-zinc-500"
+                >
+                  {authorLabel(activeAuthor)}
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => updateSearchParams({ tag: null, author: null })}
               className="ml-auto text-zinc-400 transition hover:text-zinc-100"
             >
               Clear
-            </Link>
+            </button>
           </div>
         ) : null}
 
@@ -223,6 +317,44 @@ export function FeedScreen() {
               Follow people on Nostr to see their comics here.
             </p>
           </section>
+        ) : activeTab === 'authors' && !activeAuthor ? (
+          authorDirectory.length === 0 ? (
+            <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
+              <p className="text-lg font-medium text-zinc-100">No authors found</p>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
+                Authors will appear here once Mangatsu comics have synced.
+              </p>
+            </section>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {authorDirectory.map((author) => (
+                <button
+                  key={author.pubkey}
+                  type="button"
+                  onClick={() => updateSearchParams({ author: author.pubkey })}
+                  className="rounded-[1.5rem] border border-zinc-800 bg-zinc-950/70 p-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
+                >
+                  <div className="flex items-center gap-3">
+                    <AuthorAvatar
+                      pubkey={author.pubkey}
+                      name={authorLabel(author.pubkey)}
+                      picture={authorPicture(author.pubkey)}
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Author</p>
+                      <p className="mt-2 truncate text-base font-medium text-zinc-100">
+                        {authorLabel(author.pubkey)}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm text-zinc-500">
+                    {author.count} comic{author.count === 1 ? '' : 's'}
+                  </p>
+                  <p className="mt-2 truncate text-xs font-mono text-zinc-600">{author.pubkey}</p>
+                </button>
+              ))}
+            </div>
+          )
         ) : activeComics.length === 0 ? (
           <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
             <p className="text-lg font-medium text-zinc-100">No comics found</p>
@@ -233,21 +365,45 @@ export function FeedScreen() {
         ) : (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             {activeComics.map((comic) => (
-              <Link
+              <article
                 key={`${comic.pubkey}:${comic.dTag}`}
-                to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
                 className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
               >
-                <ComicCover
-                  comic={comic}
-                  server={comic.coverServer || comic.blossomServer || server}
-                />
+                <Link
+                  to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
+                  className="block"
+                >
+                  <ComicCover
+                    comic={comic}
+                    server={comic.coverServer || comic.blossomServer || server}
+                  />
+                  <div className="px-0.5">
+                    <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
+                      {comic.title}
+                    </p>
+                  </div>
+                </Link>
                 <div className="px-0.5">
-                  <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
-                    {comic.title}
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => updateSearchParams({ author: resolveAuthorPubkey(comic) })}
+                    className="flex w-full items-center gap-2 text-left text-xs text-zinc-500 transition hover:text-zinc-200"
+                  >
+                    <AuthorAvatar
+                      pubkey={resolveAuthorPubkey(comic)}
+                      name={authorLabel(resolveAuthorPubkey(comic))}
+                      picture={authorPicture(resolveAuthorPubkey(comic))}
+                      className="h-5 w-5"
+                    />
+                    <span>
+                      by{' '}
+                      <span className="font-medium text-zinc-400">
+                        {authorLabel(resolveAuthorPubkey(comic))}
+                      </span>
+                    </span>
+                  </button>
                 </div>
-              </Link>
+              </article>
             ))}
           </div>
         )}
@@ -268,5 +424,52 @@ function ComicCover({ comic, server }: { comic: Comic; server: string | undefine
       alt={comic.title}
       className={className}
     />
+  )
+}
+
+function AuthorAvatar({
+  pubkey,
+  name,
+  picture,
+  className = 'h-8 w-8',
+}: {
+  pubkey: string
+  name: string
+  picture: string | null
+  className?: string
+}) {
+  const baseClassName = `${className} shrink-0 overflow-hidden rounded-full border border-zinc-800 bg-zinc-900`
+  if (picture) {
+    return (
+      <div className={baseClassName}>
+        <img
+          src={picture}
+          alt={name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(event) => {
+            event.currentTarget.style.display = 'none'
+            const fallback = event.currentTarget.parentElement?.querySelector('[data-fallback-avatar]')
+            if (fallback instanceof HTMLElement) {
+              fallback.style.display = 'flex'
+            }
+          }}
+        />
+        <div
+          data-fallback-avatar
+          className="hidden h-full w-full items-center justify-center bg-[linear-gradient(135deg,_rgba(59,130,246,0.35),_rgba(168,85,247,0.35))] text-[0.65rem] font-semibold text-white"
+          aria-hidden="true"
+        >
+          {authorInitials(name || pubkey)}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`${baseClassName} flex items-center justify-center bg-[linear-gradient(135deg,_rgba(59,130,246,0.35),_rgba(168,85,247,0.35))] text-[0.65rem] font-semibold text-white`}>
+      {authorInitials(name || pubkey)}
+    </div>
   )
 }

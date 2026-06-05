@@ -4,6 +4,7 @@ export interface Comic {
   dTag: string
   title: string
   author: string
+  authorPubkey: string
   description: string
   coverHash: string
   blossomServer: string

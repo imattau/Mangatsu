@@ -126,6 +126,7 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
     dTag,
     title: parseTag(event, 'title') || event.content || 'Untitled',
     author: parseTag(event, 'author'),
+    authorPubkey: parseTag(event, 'author_pubkey'),
     description: parseTag(event, 'description') || event.content || '',
     coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
     blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
