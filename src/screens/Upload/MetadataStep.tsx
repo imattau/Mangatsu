@@ -10,6 +10,7 @@ export interface MetadataFormValues {
   language: string
   coverFile: File | null
   coverMode: 'file' | 'first-page'
+  nsfw: boolean
 }
 
 interface MetadataStepProps {
@@ -91,6 +92,19 @@ export function MetadataStep({ values, onChange, onNext, allowFirstPage = true }
           onChange={(e) => set('tags', e.target.value)}
           className={inputClass()}
         />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
+          <input
+            type="checkbox"
+            checked={values.nsfw}
+            onChange={(e) => set('nsfw', e.target.checked)}
+            className="accent-zinc-400"
+          />
+          Mark as NSFW
+          <span className="text-xs text-zinc-600">(adds a content warning)</span>
+        </label>
       </div>
 
       <div className="space-y-1">

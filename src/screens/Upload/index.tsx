@@ -41,6 +41,7 @@ function defaultMetadata(): MetadataFormValues {
     language: '',
     coverFile: null,
     coverMode: 'file',
+    nsfw: false,
   }
 }
 
@@ -153,6 +154,7 @@ function metadataFromComic(comic: Comic | null | undefined): MetadataFormValues 
     language: '',
     coverFile: null,
     coverMode: 'file',
+    nsfw: false,
   }
 }
 
