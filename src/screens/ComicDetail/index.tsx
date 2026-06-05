@@ -546,6 +546,9 @@ export function ComicDetailScreen() {
               <p className="mt-1 text-sm text-zinc-400">
                 {chapters.length} chapter{chapters.length !== 1 ? 's' : ''}
               </p>
+              {comic.description && (
+                <p className="mt-2 text-sm text-zinc-400 leading-relaxed">{comic.description}</p>
+              )}
               {visibleTags.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {visibleTags.map((tag) => (
