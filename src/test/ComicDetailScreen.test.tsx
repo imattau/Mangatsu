@@ -39,6 +39,7 @@ const mockComic: Comic = {
   coverHash: 'coverhash',
   blossomServer: 'https://blossom.example',
   tags: ['action', 'adventure'],
+  nsfw: false,
   eventId: 'ev1',
 }
 

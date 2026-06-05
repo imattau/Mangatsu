@@ -100,6 +100,7 @@ function parseComicEvent(event: NostrEvent, server: string | undefined): Comic |
     coverServers,
     blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
     tags: event.tags.filter((t) => t[0] === 't').map((t) => t[1]).filter(Boolean),
+    nsfw: event.tags.some((tag) => tag[0] === 'content-warning'),
     eventId: event.id,
   }
 }

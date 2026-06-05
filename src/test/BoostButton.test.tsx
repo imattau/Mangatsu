@@ -38,6 +38,7 @@ const comic: Comic = {
   coverServer: 'https://blossom.example',
   coverServers: ['https://blossom.example'],
   tags: ['adventure', 'shonen'],
+  nsfw: false,
   eventId: 'event-1',
 }
 

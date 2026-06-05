@@ -67,12 +67,13 @@ describe('PublishStep', () => {
           authorName: '',
           authorPubkey: '',
           authorDisplayName: '',
-          description: '',
-          tags: '',
-          language: '',
-          coverFile: null,
-          coverMode: 'file',
-        }}
+        description: '',
+        tags: '',
+        language: '',
+        nsfw: false,
+        coverFile: null,
+        coverMode: 'file',
+      }}
         chapter={{
           chapterTitle: 'Chapter 1',
           chapterNumber: 1,
@@ -111,12 +112,13 @@ describe('PublishStep', () => {
           authorName: '',
           authorPubkey: '',
           authorDisplayName: '',
-          description: '',
-          tags: '',
-          language: '',
-          coverFile: null,
-          coverMode: 'file',
-        }}
+        description: '',
+        tags: '',
+        language: '',
+        nsfw: false,
+        coverFile: null,
+        coverMode: 'file',
+      }}
         pageUploads={[]}
         coverUpload={null}
         serverResults={[]}
@@ -143,12 +145,13 @@ describe('PublishStep', () => {
           authorName: '',
           authorPubkey: '',
           authorDisplayName: '',
-          description: '',
-          tags: '',
-          language: '',
-          coverFile: null,
-          coverMode: 'file',
-        }}
+        description: '',
+        tags: '',
+        language: '',
+        nsfw: false,
+        coverFile: null,
+        coverMode: 'file',
+      }}
         chapter={{
           chapterTitle: 'Chapter 1',
           chapterNumber: 1,

@@ -36,6 +36,7 @@ describe('offline comic caching', () => {
       coverServer: 'https://blossom.primary',
       coverServers: ['https://blossom.primary', 'https://blossom.backup'],
       tags: [],
+      nsfw: false,
       eventId: 'event-1',
     }
     const chapters: Chapter[] = [

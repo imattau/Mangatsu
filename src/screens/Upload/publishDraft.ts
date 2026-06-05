@@ -75,6 +75,7 @@ export async function buildPublishDraft(
       comicTags.push(['t', t])
     }
     if (input.metadata.language) comicTags.push(['language', input.metadata.language])
+    if (input.metadata.nsfw) comicTags.push(['content-warning', 'NSFW'])
 
     const comicTemplate = {
       kind: 30040,
