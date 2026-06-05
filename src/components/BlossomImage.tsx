@@ -65,7 +65,9 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
   const [resolvedSrc, setResolvedSrc] = useState(() => {
     const memCached = webTorrentService.getResolvedBlobUrl(hash)
     if (memCached) return memCached
-    return cachedUrlAllowed ? cachedUrl : PLACEHOLDER_SRC
+    if (cachedUrlAllowed && cachedUrl) return cachedUrl
+    if (candidates.length > 0) return candidates[0]
+    return PLACEHOLDER_SRC
   })
   const nextIndexRef = useRef(1)
 
@@ -78,7 +80,7 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
     // Only reset to placeholder if we don't have a cached version ready in memory
     const existing = webTorrentService.getResolvedBlobUrl(hash)
     if (!existing) {
-      setResolvedSrc(PLACEHOLDER_SRC)
+      setResolvedSrc(candidates[0] || PLACEHOLDER_SRC)
     }
     nextIndexRef.current = 1
 
