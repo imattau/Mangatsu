@@ -36,7 +36,9 @@ export class NwcClient {
 
   async payInvoice(invoice: string): Promise<void> {
     const request = await nip47.makeNwcRequestEvent(this.pubkey, this.secretKey, invoice)
-    const response = await this.waitForResponse(request.id)
+    const responsePromise = this.waitForResponse(request.id)
+    await this.relayPool.publish(this.relays, request)
+    const response = await responsePromise
     if (response.error) {
       throw new Error(response.error)
     }
