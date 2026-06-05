@@ -75,6 +75,7 @@ function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null
     blossomServer: parseTag(event, 'blossom') || pageUploads[0]?.server || '',
     publishedAt: event.created_at ?? 0,
     eventId: event.id,
+    torrent: parseTag(event, 'torrent') || parseTag(event, 'magnet') || undefined,
   }
 }
 

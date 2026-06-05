@@ -140,6 +140,7 @@ function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null
       .map((tag) => tag.slice(2).filter(Boolean)),
     publishedAt: event.created_at ?? 0,
     eventId: event.id,
+    torrent: parseTag(event, 'torrent') || parseTag(event, 'magnet') || undefined,
   }
 }
 
@@ -399,6 +400,7 @@ export function UploadScreen() {
             existingComic={existingComic}
             publishChapter={isEditChapter ? true : undefined}
             syncLibraryList={!isEditComic && !isEditChapter}
+            magnetURI={uploadResult.magnetURI}
             onDone={handlePublishDone}
           />
         )}

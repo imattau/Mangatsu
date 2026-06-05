@@ -22,6 +22,7 @@ export interface PublishDraftInput {
   existingComic?: Comic | null
   publishComic?: boolean
   publishChapter?: boolean
+  magnetURI?: string
 }
 
 export interface PublishDraft {
@@ -129,6 +130,12 @@ export async function buildPublishDraft(
         ['l', 'chapter', 'com.mangatsu'],
         ...pageUploads.map((upload) => ['page', `blossom://${upload.hash}`, ...upload.servers]),
       ]
+      
+      const torrentUrl = input.magnetURI || chapterSource?.torrent
+      if (torrentUrl) {
+        chapterTags.push(['torrent', torrentUrl])
+      }
+
       const chapterTemplate = {
         kind: 30041,
         created_at: createdAt,

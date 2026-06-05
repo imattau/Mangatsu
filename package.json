@@ -27,6 +27,7 @@
     "react-dom": "^19.2.6",
     "react-qr-code": "^2.0.21",
     "react-router-dom": "^7.16.0",
+    "webtorrent": "^3.0.16",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -38,6 +39,7 @@
     "@types/node": "^24.12.4",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/webtorrent": "^0.110.1",
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.5.0",
     "clsx": "^2.1.1",
@@ -52,6 +54,7 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
+    "vite-plugin-node-polyfills": "^0.28.0",
     "vitest": "^4.1.8"
   }
 }

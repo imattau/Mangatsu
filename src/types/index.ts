@@ -27,6 +27,7 @@ export interface Chapter {
   pageServerLists?: string[][]
   publishedAt: number
   eventId: string
+  torrent?: string
 }
 
 export interface ReadingProgress {

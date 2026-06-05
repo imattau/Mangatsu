@@ -6,6 +6,7 @@ import { convertImageFileToWebp } from './webp'
 import { MAX_CHAPTER_PAGES } from './limits'
 import type { UploadArtifact } from './publishDraft'
 import { BLOSSOM_UPLOAD_TIMEOUT_MS, uploadFileToServers } from './uploadHelpers'
+import { webTorrentService } from '@/services/WebTorrentService'
 
 export interface ServerResult {
   url: string
@@ -118,14 +119,24 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
 
     const serverUrls = getUploadServers()
     const pageUploads: UploadArtifactState[] = []
+    const convertedNamedFiles: File[] = []
 
     for (const page of pages) {
       try {
-        const upload = await convertAndUploadToAll(page, serverUrls)
+        setPhase('converting')
+        const webpFile = await convertImageFileToWebp(page)
+        setPhase('uploading')
+        const upload = await uploadToAll(webpFile, serverUrls)
+
         pageUploads.push({
           ...upload,
           missingServers: upload.missingServers ?? [],
         })
+
+        const extension = webpFile.name.split('.').pop() || 'webp'
+        const namedFile = new File([webpFile], `${upload.hash}.${extension}`, { type: webpFile.type })
+        convertedNamedFiles.push(namedFile)
+
         setUploaded((n) => n + 1)
       } catch (err) {
         setError(`Failed to upload page: ${err instanceof Error ? err.message : String(err)}`)
@@ -153,6 +164,17 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
       }
     }
 
+    let magnetURI: string | undefined = undefined
+    if (webTorrentService.isWebTorrentEnabled() && convertedNamedFiles.length > 0) {
+      try {
+        const title = `Chapter-${Date.now()}`
+        const torrentResult = await webTorrentService.seedFiles(convertedNamedFiles, title)
+        magnetURI = torrentResult.magnetURI
+      } catch (torrentErr) {
+        console.warn('Failed to seed chapter torrent:', torrentErr)
+      }
+    }
+
     const allUploads = [...pageUploads, ...(coverUpload ? [coverUpload] : [])]
     const serverResults: ServerResult[] = serverUrls.map((url) => ({
       url,
@@ -162,7 +184,7 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
 
     setRunning(false)
     setPhase('idle')
-    onDone({ pageUploads, coverUpload, serverResults })
+    onDone({ pageUploads, coverUpload, serverResults, magnetURI })
   }
 
   const percent = total > 0 ? Math.round((uploaded / total) * 100) : 0

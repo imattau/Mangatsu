@@ -40,6 +40,8 @@ export function SettingsScreen() {
   const setConnectionString = useNwcStore((s) => s.setConnectionString)
   const showNsfw = useSettingsStore((s) => s.showNsfw)
   const setShowNsfw = useSettingsStore((s) => s.setShowNsfw)
+  const enableWebTorrent = useSettingsStore((s) => s.enableWebTorrent)
+  const setEnableWebTorrent = useSettingsStore((s) => s.setEnableWebTorrent)
   const [nwcInput, setNwcInput] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [isBlossomOpen, setIsBlossomOpen] = useState(false)
@@ -286,6 +288,26 @@ export function SettingsScreen() {
               aria-label="Show NSFW content"
               checked={showNsfw}
               onChange={(e) => setShowNsfw(e.target.checked)}
+              className="accent-zinc-400 h-4 w-4"
+            />
+          </label>
+        </section>
+
+        {/* WebTorrent */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
+          <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">WebTorrent</p>
+          <label className="flex cursor-pointer items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-zinc-100">Enable WebTorrent sharing</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Use WebRTC peer-to-peer sharing to download and seed comic chapters (alleviates Blossom servers)
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              aria-label="Enable WebTorrent sharing"
+              checked={enableWebTorrent}
+              onChange={(e) => setEnableWebTorrent(e.target.checked)}
               className="accent-zinc-400 h-4 w-4"
             />
           </label>

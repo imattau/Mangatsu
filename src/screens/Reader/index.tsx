@@ -8,6 +8,7 @@ import { usePageObserver } from './usePageObserver'
 import { useProgressPublisher } from './useProgressPublisher'
 import { usePagePreloader } from './usePagePreloader'
 import { BlossomImage } from '@/components/BlossomImage'
+import { webTorrentService } from '@/services/WebTorrentService'
 
 function chapterNumber(dTag: string): number {
   const match = dTag.match(/(\d+(?:\.\d+)?)$/)
@@ -116,6 +117,15 @@ export function ReaderScreen() {
   usePagePreloader(pageUrls, currentPage)
   useProgressPublisher(chapterDTag, currentPage)
 
+  useEffect(() => {
+    const torrent = chapter?.torrent
+    return () => {
+      if (torrent) {
+        webTorrentService.cleanupTorrent(torrent)
+      }
+    }
+  }, [chapter?.torrent])
+
   if (!chapter) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
@@ -165,6 +175,7 @@ export function ReaderScreen() {
               hash={page.hash}
               server={page.server}
               servers={page.servers}
+              torrent={chapter.torrent}
               alt={`Page ${idx + 1}`}
               className="block w-full snap-start snap-always"
               loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}

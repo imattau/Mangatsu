@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from 'r
 import { useBlossomStore } from '@/stores/blossomStore'
 import { DEFAULT_BLOSSOM_SERVERS } from '@/stores/blossomStore'
 import { buildBlossomBlobUrl, normalizeBlossomServer, probeBlossomAssetExists } from '@/lib/blossom'
+import { webTorrentService } from '@/services/WebTorrentService'
 
 function uniq(values: Array<string | undefined>): string[] {
   const seen = new Set<string>()
@@ -26,10 +27,11 @@ interface BlossomImageProps {
   servers?: string[]
   className?: string
   loading?: 'eager' | 'lazy'
+  torrent?: string
 }
 
 export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(function BlossomImage(
-  { hash, alt, server, servers: explicitServers = [], className, loading = 'lazy' },
+  { hash, alt, server, servers: explicitServers = [], className, loading = 'lazy', torrent },
   ref,
 ) {
   const blossomServers = useBlossomStore((state) => state.servers)
@@ -63,41 +65,63 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
   const [resolvedSrc, setResolvedSrc] = useState(PLACEHOLDER_SRC)
   const nextIndexRef = useRef(1)
 
-  // Reset probing state whenever candidates change.
+  // Reset probing state whenever candidates change or torrent is updated.
   const candidatesKey = candidates.join('\n')
   useEffect(() => {
     let cancelled = false
+    let objectUrl = ''
     setResolvedSrc(PLACEHOLDER_SRC)
     nextIndexRef.current = 1
 
-    if (candidates.length === 0) {
-      return () => {
-        cancelled = true
-      }
-    }
-
-    void Promise.any(
-      candidates.map(async (candidate, index) => {
-        const ok = await probeBlossomAssetExists(candidate)
-        if (!ok) {
-          throw new Error('missing blob')
+    async function loadWithFallback() {
+      if (torrent) {
+        try {
+          // Add a 4-second timeout for WebTorrent resolution (metadata lookup & file fetching)
+          const torrentPromise = webTorrentService.getFile(torrent, hash)
+          const timeoutPromise = new Promise<Blob>((_, reject) =>
+            setTimeout(() => reject(new Error('WebTorrent timed out')), 4000)
+          )
+          
+          const blob = await Promise.race([torrentPromise, timeoutPromise])
+          if (cancelled) return
+          objectUrl = URL.createObjectURL(blob)
+          setResolvedSrc(objectUrl)
+          return
+        } catch (err) {
+          console.warn('WebTorrent load failed, falling back to Blossom:', err)
         }
-        return { candidate, index }
-      }),
-    )
-      .then((winner) => {
+      }
+
+      if (cancelled) return
+      if (candidates.length === 0) return
+
+      try {
+        const winner = await Promise.any(
+          candidates.map(async (candidate, index) => {
+            const ok = await probeBlossomAssetExists(candidate)
+            if (!ok) {
+              throw new Error('missing blob')
+            }
+            return { candidate, index }
+          }),
+        )
         if (cancelled) return
         nextIndexRef.current = winner.index + 1
         setResolvedSrc(winner.candidate)
-      })
-      .catch(() => {
+      } catch {
         // Keep the placeholder until an onError fallback finds a working URL.
-      })
+      }
+    }
+
+    void loadWithFallback()
 
     return () => {
       cancelled = true
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+      }
     }
-  }, [candidatesKey])
+  }, [candidatesKey, torrent, hash])
 
   const handleError = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {

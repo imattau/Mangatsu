@@ -23,6 +23,7 @@ interface PublishStepProps {
   existingComic?: Comic | null
   publishChapter?: boolean
   syncLibraryList?: boolean
+  magnetURI?: string
   onDone: (comicDTag: string) => void
 }
 
@@ -38,6 +39,7 @@ export function PublishStep({
   existingComic,
   publishChapter,
   syncLibraryList = true,
+  magnetURI,
   onDone,
 }: PublishStepProps) {
   const { service } = useNostr()
@@ -79,6 +81,7 @@ export function PublishStep({
         existingComic,
         publishComic: isNewComic || !chapter,
         publishChapter,
+        magnetURI,
       })
 
       await publishDraft(service, draft)
@@ -117,6 +120,7 @@ export function PublishStep({
           pageServerLists: pageArtifacts.map((upload) => upload.servers),
           publishedAt: draft.createdAt,
           eventId: draft.events.at(-1)?.id ?? existingChapter?.eventId ?? nextChapterDTag,
+          torrent: magnetURI ?? existingChapter?.torrent,
         })
       }
 
@@ -217,6 +221,25 @@ export function PublishStep({
       )}
       {serverResults.length === 0 && status === 'review' && (
         <p className="text-sm text-zinc-400">No new Blossom uploads required.</p>
+      )}
+
+      {status === 'review' && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">WebTorrent Sharing</p>
+          <div className="mt-2 flex items-center gap-2 text-sm">
+            {magnetURI ? (
+              <>
+                <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="text-zinc-200">Active — Seeding chapter P2P (magnet link generated)</span>
+              </>
+            ) : (
+              <>
+                <span className="flex h-2 w-2 rounded-full bg-zinc-600" />
+                <span className="text-zinc-500">Inactive — Seeding disabled in global settings</span>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {status === 'review' && (
