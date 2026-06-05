@@ -117,14 +117,7 @@ export function ReaderScreen() {
   usePagePreloader(pageUrls, currentPage)
   useProgressPublisher(chapterDTag, currentPage)
 
-  useEffect(() => {
-    const torrent = chapter?.torrent
-    return () => {
-      if (torrent) {
-        webTorrentService.cleanupTorrent(torrent)
-      }
-    }
-  }, [chapter?.torrent])
+
 
   if (!chapter) {
     return (

@@ -11,6 +11,8 @@ export class WebTorrentService {
   private client: WebTorrent.Instance | null = null
   private torrents = new Map<string, WebTorrent.Torrent>()
   private objectUrls = new Set<string>()
+  private activeQueue: string[] = []
+  private readonly MAX_ACTIVE_TORRENTS = 3
 
   getClient(): WebTorrent.Instance {
     if (!this.client) {
@@ -50,6 +52,22 @@ export class WebTorrentService {
     }
   }
 
+  private registerTorrent(torrentId: string, torrent: WebTorrent.Torrent) {
+    this.torrents.set(torrentId, torrent)
+    
+    // Remove if already in queue to move it to the end
+    this.activeQueue = this.activeQueue.filter((id) => id !== torrentId)
+    this.activeQueue.push(torrentId)
+
+    // Enforce LRU limit
+    if (this.activeQueue.length > this.MAX_ACTIVE_TORRENTS) {
+      const oldestId = this.activeQueue.shift()
+      if (oldestId) {
+        this.cleanupTorrent(oldestId)
+      }
+    }
+  }
+
   async getFile(magnetOrInfoHash: string, fileHash: string): Promise<Blob> {
     if (!this.isWebTorrentEnabled()) {
       throw new Error('WebTorrent is disabled in settings')
@@ -70,7 +88,11 @@ export class WebTorrentService {
           reject(err)
         })
       })
-      this.torrents.set(torrentId, torrent)
+      this.registerTorrent(torrentId, torrent)
+    } else {
+      // Refresh its position in LRU queue
+      this.activeQueue = this.activeQueue.filter((id) => id !== torrentId)
+      this.activeQueue.push(torrentId)
     }
 
     // Wait for metadata to resolve if not loaded yet
@@ -111,7 +133,7 @@ export class WebTorrentService {
           announceList: trackers.map((t) => [t]),
         } as any,
         (torrent) => {
-          this.torrents.set(torrent.magnetURI, torrent)
+          this.registerTorrent(torrent.magnetURI, torrent)
           resolve({
             magnetURI: torrent.magnetURI,
             infoHash: torrent.infoHash,
