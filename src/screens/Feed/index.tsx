@@ -378,13 +378,49 @@ export function FeedScreen() {
                             e.stopPropagation()
                             handleToggleFollow(author.pubkey)
                           }}
-                          className={`rounded-full px-4 py-1.5 text-xs font-semibold border transition shrink-0 ${
+                          aria-label={isFollowing ? 'Unfollow' : 'Follow'}
+                          className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 sm:px-4 sm:py-1.5 text-xs font-semibold border transition shrink-0 ${
                             isFollowing
                               ? 'border-zinc-700 bg-transparent text-zinc-400 hover:border-red-800 hover:text-red-400'
                               : 'border-zinc-200 bg-zinc-200 text-zinc-950 hover:bg-zinc-100 hover:border-zinc-100'
                           }`}
                         >
-                          {isFollowing ? 'Unfollow' : 'Follow'}
+                          {isFollowing ? (
+                            <>
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="h-3.5 w-3.5"
+                              >
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <line x1="22" x2="16" y1="11" y2="11" />
+                              </svg>
+                              <span className="hidden sm:inline">Unfollow</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="h-3.5 w-3.5"
+                              >
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <line x1="19" x2="19" y1="8" y2="14" />
+                                <line x1="22" x2="16" y1="11" y2="11" />
+                              </svg>
+                              <span className="hidden sm:inline">Follow</span>
+                            </>
+                          )}
                         </button>
                       )}
                     </div>
