@@ -12,6 +12,7 @@ import type { Comic } from '@/types'
 import { BlossomImage } from '@/components/BlossomImage'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { parseComicEvent } from '@/lib/comic'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 const EMPTY_EVENTS: NostrEvent[] = []
 type Tab = 'global' | 'follows' | 'authors'
@@ -115,6 +116,7 @@ export function FeedScreen() {
   )
   const followsEvents = useObservableState(followsTimeline$) ?? EMPTY_EVENTS
 
+  const showNsfw = useSettingsStore((s) => s.showNsfw)
   const server = primaryServer()
   const activeTag = searchParams.get('tag')?.trim() ?? ''
   const activeAuthor = searchParams.get('author')?.trim() ?? ''
@@ -376,6 +378,7 @@ export function FeedScreen() {
                   <ComicCover
                     comic={comic}
                     server={comic.coverServer || comic.blossomServer || server}
+                    blurred={comic.nsfw && !showNsfw}
                   />
                   <div className="px-0.5">
                     <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
@@ -412,17 +415,45 @@ export function FeedScreen() {
   )
 }
 
-function ComicCover({ comic, server }: { comic: Comic; server: string | undefined }) {
-  const className =
+function ComicCover({
+  comic,
+  server,
+  blurred,
+}: {
+  comic: Comic
+  server: string | undefined
+  blurred: boolean
+}) {
+  const baseClass =
     'aspect-[2/3] w-full rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
-  if (!comic.coverHash) return <div className={className} />
+  if (blurred) {
+    return (
+      <div className={`${baseClass} relative overflow-hidden`}>
+        {comic.coverHash ? (
+          <BlossomImage
+            hash={comic.coverHash}
+            server={server}
+            servers={comic.coverServers}
+            alt={comic.title}
+            className="h-full w-full object-cover blur-sm brightness-50"
+          />
+        ) : (
+          <div className="h-full w-full bg-zinc-800" />
+        )}
+        <span className="absolute inset-0 flex items-center justify-center text-[0.6rem] font-semibold uppercase tracking-widest text-zinc-400">
+          NSFW
+        </span>
+      </div>
+    )
+  }
+  if (!comic.coverHash) return <div className={baseClass} />
   return (
     <BlossomImage
       hash={comic.coverHash}
       server={server}
       servers={comic.coverServers}
       alt={comic.title}
-      className={className}
+      className={baseClass}
     />
   )
 }

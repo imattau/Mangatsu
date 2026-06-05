@@ -40,6 +40,7 @@ const mockOtherComicEvent: NostrEvent = {
 }
 
 let mockObservableState: NostrEvent[] | null = []
+let mockShowNsfw = false
 
 vi.mock('applesauce-react/hooks', () => ({
   useEventStore: () => ({
@@ -67,6 +68,11 @@ vi.mock('../stores/authStore', () => ({
     sel({ pubkey: 'mypubkey' }),
 }))
 
+vi.mock('../stores/settingsStore', () => ({
+  useSettingsStore: (sel: (s: { showNsfw: boolean }) => unknown) =>
+    sel({ showNsfw: mockShowNsfw }),
+}))
+
 vi.mock('../stores/blossomStore', () => ({
   DEFAULT_BLOSSOM_SERVERS: ['https://blossom.primal.net', 'https://blossom.band', 'https://cdn.satellite.earth'],
   useBlossomStore: (
@@ -85,6 +91,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 describe('FeedScreen', () => {
   beforeEach(() => {
     mockObservableState = []
+    mockShowNsfw = false
   })
 
   it('renders Global and Follows tabs', () => {
@@ -154,5 +161,49 @@ describe('FeedScreen', () => {
     expect(
       screen.getByText(/follow people on nostr/i),
     ).toBeInTheDocument()
+  })
+
+  it('shows NSFW label on cover when comic has content-warning and showNsfw is false', () => {
+    const nsfwEvent: NostrEvent = {
+      id: 'ev-nsfw',
+      pubkey: 'pubkey1',
+      kind: 30040,
+      created_at: 1700000000,
+      tags: [
+        ['d', 'adult-comic'],
+        ['title', 'Adult Comic'],
+        ['L', 'com.mangatsu'],
+        ['content-warning', 'NSFW'],
+      ],
+      content: '',
+      sig: 'sig-nsfw',
+    }
+    mockObservableState = [nsfwEvent]
+    mockShowNsfw = false
+    render(<FeedScreen />, { wrapper: Wrapper })
+    expect(screen.getByText('Adult Comic')).toBeInTheDocument()
+    expect(screen.getByText('NSFW')).toBeInTheDocument()
+  })
+
+  it('does not show NSFW label when showNsfw is true', () => {
+    const nsfwEvent: NostrEvent = {
+      id: 'ev-nsfw',
+      pubkey: 'pubkey1',
+      kind: 30040,
+      created_at: 1700000000,
+      tags: [
+        ['d', 'adult-comic'],
+        ['title', 'Adult Comic'],
+        ['L', 'com.mangatsu'],
+        ['content-warning', 'NSFW'],
+      ],
+      content: '',
+      sig: 'sig-nsfw',
+    }
+    mockObservableState = [nsfwEvent]
+    mockShowNsfw = true
+    render(<FeedScreen />, { wrapper: Wrapper })
+    expect(screen.getByText('Adult Comic')).toBeInTheDocument()
+    expect(screen.queryByText('NSFW')).not.toBeInTheDocument()
   })
 })
