@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { decode } from 'light-bolt11-decoder'
+import { bech32 } from '@scure/base'
 import type { RelayPool } from 'applesauce-relay'
 import { useNwcStore } from '@/stores/nwcStore'
 import { useNostr } from '@/context/NostrContext'
@@ -18,6 +19,11 @@ function validateLud16(lud16: string): { user: string; domain: string } | null {
   return { user, domain }
 }
 
+function decodeLud06(lud06: string): string {
+  const { words } = bech32.decode(lud06 as `${string}1${string}`, 1000)
+  return new TextDecoder().decode(bech32.fromWords(words))
+}
+
 function validateCallback(callback: string, expectedDomain: string): boolean {
   try {
     const url = new URL(callback)
@@ -30,7 +36,8 @@ function validateCallback(callback: string, expectedDomain: string): boolean {
 async function fetchInvoice(
   relayPool: RelayPool,
   connectionString: string,
-  lud16: string,
+  lud16: string | undefined,
+  lud06: string | undefined,
   amountSats: number,
 ): Promise<{ nwc: NwcClient; invoice: string; amountSats: number }> {
   // Validate amount
@@ -39,23 +46,29 @@ async function fetchInvoice(
     throw new Error('Invalid amount')
   }
 
-  // Validate lud16
-  const addr = validateLud16(lud16)
-  if (!addr) {
-    throw new Error('Invalid Lightning address format')
+  // Resolve LNURL endpoint and expected domain
+  let lnurlEndpoint: string
+  let expectedDomain: string
+  if (lud16) {
+    const addr = validateLud16(lud16)
+    if (!addr) throw new Error('Invalid Lightning address format')
+    lnurlEndpoint = `https://${addr.domain}/.well-known/lnurlp/${encodeURIComponent(addr.user)}`
+    expectedDomain = addr.domain
+  } else if (lud06) {
+    lnurlEndpoint = decodeLud06(lud06)
+    expectedDomain = new URL(lnurlEndpoint).hostname
+  } else {
+    throw new Error('No Lightning address on profile')
   }
-  const { user, domain } = addr
 
   const nwc = new NwcClient({ connectionString, relayPool })
   await nwc.blockUntilReady()
 
-  const lnurlRes = await fetch(
-    `https://${domain}/.well-known/lnurlp/${encodeURIComponent(user)}`,
-  )
+  const lnurlRes = await fetch(lnurlEndpoint)
   const lnurlData = (await lnurlRes.json()) as { callback: string }
 
-  // Validate callback hostname matches lud16 domain
-  if (!validateCallback(lnurlData.callback, domain)) {
+  // Validate callback hostname matches expected domain
+  if (!validateCallback(lnurlData.callback, expectedDomain)) {
     throw new Error('LNURL callback domain mismatch — possible redirect attack')
   }
 
@@ -111,7 +124,8 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
       const { nwc, invoice, amountSats } = await fetchInvoice(
         service.relayPool,
         connectionString,
-        lud16 ?? lud06!,
+        lud16,
+        lud06,
         finalAmount,
       )
       // Show confirmation before paying
