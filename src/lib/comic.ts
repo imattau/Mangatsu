@@ -42,6 +42,7 @@ export function parseComicEvent(event: NostrEvent, server: string | undefined): 
       .filter((tag) => tag[0] === 't')
       .map((tag) => tag[1])
       .filter(Boolean),
+    nsfw: event.tags.some((tag) => tag[0] === 'content-warning'),
     eventId: event.id,
   }
 }

@@ -11,6 +11,7 @@ export interface Comic {
   coverServer?: string
   coverServers?: string[]
   tags: string[]
+  nsfw: boolean
   eventId: string
 }
 
