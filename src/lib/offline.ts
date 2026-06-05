@@ -2,7 +2,7 @@ import type { Chapter, Comic } from '@/types'
 import {
   buildBlossomBlobUrl,
   collectComicBlossomAssets,
-  probeBlossomAssetExists,
+  resolveFirstReachableBlossomUrl,
 } from '@/lib/blossom'
 
 const IMAGE_CACHE = 'mangatsu-images-v1'
@@ -77,7 +77,7 @@ export async function cacheTargetsForOffline(
 
   for (let index = 0; index < targets.length; index += 1) {
     const target = targets[index]
-    const url = await chooseWorkingUrl(target.candidates)
+    const url = await resolveFirstReachableBlossomUrl(target.candidates)
     if (!url) {
       throw new Error(`Missing asset: ${target.label}`)
     }
@@ -102,14 +102,4 @@ export async function removeTargetsFromOfflineCache(targets: OfflineAssetTarget[
       await cache.delete(url)
     }
   }
-}
-
-async function chooseWorkingUrl(candidates: string[]): Promise<string | null> {
-  for (const url of candidates) {
-    if (await probeBlossomAssetExists(url)) {
-      return url
-    }
-  }
-
-  return null
 }

@@ -2,7 +2,7 @@ import { render, screen, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ReaderScreen } from '../screens/Reader'
-import type { Chapter, ReadingProgress } from '../types'
+import type { Chapter, Comic, ReadingProgress } from '../types'
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -30,6 +30,22 @@ const mockChapter2: Chapter = {
   eventId: 'ch2',
 }
 
+const mockComic: Comic = {
+  id: 'comic-1',
+  pubkey: 'abc',
+  dTag: 'one-piece',
+  title: 'One Piece',
+  author: 'Eiichiro Oda',
+  authorPubkey: 'author-pubkey',
+  description: 'Adventure',
+  coverHash: 'coverhash',
+  blossomServer: 'https://blossom.example',
+  coverServer: 'https://blossom.example',
+  coverServers: ['https://blossom.example'],
+  tags: ['adventure', 'shonen'],
+  eventId: 'comic-1',
+}
+
 let mockChapters: Chapter[] = [mockChapter1, mockChapter2]
 const mockProgress: Record<string, ReadingProgress> = {}
 let mockSetProgress = vi.fn()
@@ -46,14 +62,14 @@ let mockActiveAccount: { signer: { signEvent: ReturnType<typeof vi.fn> } } | nul
 
 vi.mock('../stores/comicStore', () => ({
   useComicStore: (sel: (s: {
-    comics: Record<string, unknown>
+    comics: Record<string, Comic>
     chapters: Record<string, Chapter>
     setComic: () => void
     setChapter: () => void
     chaptersForComic: (dTag: string) => Chapter[]
   }) => unknown) =>
     sel({
-      comics: {},
+      comics: { 'one-piece': mockComic },
       chapters: {},
       setComic: vi.fn(),
       setChapter: vi.fn(),
@@ -88,7 +104,11 @@ vi.mock('../context/NostrContext', () => ({
   useNostr: () => ({
     service: {
       eventFactory: { build: (...args: unknown[]) => mockBuildFn(...args) },
+      publishEvent: (...args: unknown[]) => mockPublishFn(...args),
       accountManager: { get active() { return mockActiveAccount } },
+      get activeAccount() {
+        return mockActiveAccount
+      },
       relayPool: { group: vi.fn().mockReturnValue({ publish: (...args: unknown[]) => mockPublishFn(...args) }) },
     },
   }),
@@ -136,6 +156,8 @@ describe('ReaderScreen — page rendering', () => {
     mockChapters = [mockChapter1, mockChapter2]
     mockPrimaryServer = vi.fn(() => 'https://blossom.example')
     mockCachedHashes = {}
+    mockBuildFn.mockClear()
+    mockPublishFn.mockClear()
 
     class MockImage {
       onload: null | (() => void) = null
@@ -162,6 +184,11 @@ describe('ReaderScreen — page rendering', () => {
     await waitFor(() => {
       expect(screen.getAllByRole('img')).toHaveLength(mockChapter1.pageHashes.length)
     })
+  })
+
+  it('renders a boost button in the reader footer', () => {
+    renderReader()
+    expect(screen.getByRole('button', { name: /boost comic/i })).toBeInTheDocument()
   })
 
   it('resolves page URLs via chapter blossomServer', async () => {
