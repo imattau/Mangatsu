@@ -64,11 +64,12 @@ export function BoostButton({ comic, comicUrl, appOrigin, blossomServers }: Boos
 
       const template = {
         kind: 1 as const,
+        created_at: Math.floor(Date.now() / 1000),
         content: buildComicBoostContent(comic, comicUrl, appOrigin),
         tags: buildComicBoostTags(comic, coverUrl, comicUrl),
       }
 
-      const signed = await service.eventFactory.build(template)
+      const signed = await service.activeAccount.signer.signEvent(template)
       if (!signed) {
         throw new Error('Unable to sign boost note')
       }

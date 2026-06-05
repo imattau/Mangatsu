@@ -5,14 +5,13 @@ import { npubEncode } from 'nostr-tools/nip19'
 import { BoostButton } from '@/components/BoostButton'
 import type { Comic } from '@/types'
 
-const mockBuildFn = vi.fn(async (template: object) => ({ ...template, id: 'boost-event', sig: 'sig', pubkey: 'pubkey' }))
+const mockSignEvent = vi.fn(async (template: object) => ({ ...template, id: 'boost-event', sig: 'sig', pubkey: 'pubkey' }))
 const mockPublishEvent = vi.fn(async (_event?: unknown) => undefined)
 
 vi.mock('@/context/NostrContext', () => ({
   useNostr: () => ({
     service: {
-      activeAccount: { signer: {} },
-      eventFactory: { build: (template: unknown) => mockBuildFn(template as object) },
+      activeAccount: { signer: { signEvent: (template: unknown) => mockSignEvent(template as object) } },
       publishEvent: (event: unknown) => mockPublishEvent(event),
     },
   }),
@@ -44,7 +43,7 @@ const comic: Comic = {
 
 describe('BoostButton', () => {
   beforeEach(() => {
-    mockBuildFn.mockClear()
+    mockSignEvent.mockClear()
     mockPublishEvent.mockClear()
   })
 
@@ -66,26 +65,29 @@ describe('BoostButton', () => {
     await user.click(screen.getByRole('button', { name: /boost comic/i }))
 
     await waitFor(() => {
-      expect(mockBuildFn).toHaveBeenCalledTimes(1)
+      expect(mockSignEvent).toHaveBeenCalledTimes(1)
       expect(mockPublishEvent).toHaveBeenCalledTimes(1)
     })
 
-    expect(mockBuildFn).toHaveBeenCalledWith({
-      kind: 1,
-      content: [
-        'Check out One Piece by Eiichiro Oda',
-        `nostr:${npubEncode(comic.authorPubkey)}`,
-        `https://mangatsu.example/comic/one-piece?pubkey=${comic.pubkey}`,
-        '#adventure #shonen',
-        'Get #mangatsu at https://mangatsu.example',
-      ].join('\n'),
-      tags: [
-        [`r`, `https://mangatsu.example/comic/one-piece?pubkey=${comic.pubkey}`],
-        ['image', 'https://blossom.example/coverhash', 'One Piece'],
-        ['p', comic.authorPubkey],
-        ['t', 'adventure'],
-        ['t', 'shonen'],
-      ],
-    })
+    expect(mockSignEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 1,
+        created_at: expect.any(Number),
+        content: [
+          'Check out One Piece by Eiichiro Oda',
+          `nostr:${npubEncode(comic.authorPubkey)}`,
+          `https://mangatsu.example/comic/one-piece?pubkey=${comic.pubkey}`,
+          '#adventure #shonen',
+          'Get #mangatsu at https://mangatsu.example',
+        ].join('\n'),
+        tags: [
+          [`r`, `https://mangatsu.example/comic/one-piece?pubkey=${comic.pubkey}`],
+          ['image', 'https://blossom.example/coverhash', 'One Piece'],
+          ['p', comic.authorPubkey],
+          ['t', 'adventure'],
+          ['t', 'shonen'],
+        ],
+      }),
+    )
   })
 })
