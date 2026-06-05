@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useComicStore } from '@/stores/comicStore'
 import { useReadStore } from '@/stores/readStore'
 import { useBlossomStore } from '@/stores/blossomStore'
+import { BoostButton } from '@/components/BoostButton'
 import { usePageObserver } from './usePageObserver'
 import { useProgressPublisher } from './useProgressPublisher'
 import { usePagePreloader } from './usePagePreloader'
@@ -17,9 +18,11 @@ export function ReaderScreen() {
   const { dTag, chapterId } = useParams<{ dTag: string; chapterId: string }>()
   const chapterDTag = chapterId ? decodeURIComponent(chapterId) : ''
 
+  const comic = useComicStore((s) => (dTag ? s.comics[dTag] ?? null : null))
   const chaptersForComic = useComicStore((s) => s.chaptersForComic)
   const cachedHashes = useBlossomStore((s) => s.cachedHashes)
   const primaryServer = useBlossomStore((s) => s.primaryServer)
+  const blossomServers = useBlossomStore((s) => s.servers)
   const setProgress = useReadStore((s) => s.setProgress)
   const scrollContainerRef = useRef<HTMLElement | null>(null)
 
@@ -42,6 +45,12 @@ export function ReaderScreen() {
       : null
 
   const server = chapter?.blossomServer || primaryServer() || ''
+  const appOrigin = window.location.origin
+  const comicUrl = comic && dTag ? `${window.location.origin}/comic/${dTag}?pubkey=${comic.pubkey}` : ''
+  const activeBlossomServers = useMemo(
+    () => blossomServers.map((entry) => entry.url),
+    [blossomServers],
+  )
   const pageUrls = useMemo(
     () =>
       chapter
@@ -176,16 +185,26 @@ export function ReaderScreen() {
         ) : (
           <span />
         )}
-        {nextChapter ? (
-          <Link
-            to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}`}
-            className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
-          >
-            Next →
-          </Link>
-        ) : (
-          <span />
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {comic ? (
+            <BoostButton
+              comic={comic}
+              comicUrl={comicUrl}
+              appOrigin={appOrigin}
+              blossomServers={activeBlossomServers}
+            />
+          ) : null}
+          {nextChapter ? (
+            <Link
+              to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}`}
+              className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
+            >
+              Next →
+            </Link>
+          ) : (
+            <span />
+          )}
+        </div>
       </nav>
     </div>
   )

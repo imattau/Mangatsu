@@ -62,6 +62,16 @@ export async function probeBlossomAssetExists(url: string): Promise<boolean> {
   }
 }
 
+export async function resolveFirstReachableBlossomUrl(candidates: string[]): Promise<string | null> {
+  for (const url of candidates) {
+    if (await probeBlossomAssetExists(url)) {
+      return url
+    }
+  }
+
+  return null
+}
+
 export function collectComicBlossomAssets(comic: Comic | null | undefined, chapters: Chapter[]): BlossomAssetRef[] {
   if (!comic) return []
 
