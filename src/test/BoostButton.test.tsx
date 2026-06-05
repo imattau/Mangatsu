@@ -74,19 +74,21 @@ describe('BoostButton', () => {
         kind: 1,
         created_at: expect.any(Number),
         content: [
+          'https://blossom.example/coverhash',
           'Check out One Piece by Eiichiro Oda',
           `nostr:${npubEncode(comic.authorPubkey)}`,
           `https://mangatsu.example/comic/one-piece?pubkey=${comic.pubkey}`,
           '#adventure #shonen',
           'Get #mangatsu at https://mangatsu.example',
         ].join('\n'),
-        tags: [
-          [`r`, `https://mangatsu.example/comic/one-piece?pubkey=${comic.pubkey}`],
-          ['image', 'https://blossom.example/coverhash', 'One Piece'],
-          ['p', comic.authorPubkey],
-          ['t', 'adventure'],
-          ['t', 'shonen'],
-        ],
+      tags: [
+        [`r`, `https://mangatsu.example/comic/one-piece?pubkey=${comic.pubkey}`],
+        ['image', 'https://blossom.example/coverhash', 'One Piece'],
+        ['imeta', 'url https://blossom.example/coverhash', 'm image/webp', 'alt One Piece', `x ${comic.coverHash}`],
+        ['p', comic.authorPubkey],
+        ['t', 'adventure'],
+        ['t', 'shonen'],
+      ],
       }),
     )
   })

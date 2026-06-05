@@ -65,7 +65,7 @@ export function BoostButton({ comic, comicUrl, appOrigin, blossomServers }: Boos
       const template = {
         kind: 1 as const,
         created_at: Math.floor(Date.now() / 1000),
-        content: buildComicBoostContent(comic, comicUrl, appOrigin),
+        content: buildComicBoostContent(comic, comicUrl, coverUrl, appOrigin),
         tags: buildComicBoostTags(comic, coverUrl, comicUrl),
       }
 

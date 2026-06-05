@@ -30,16 +30,22 @@ export async function resolveComicBoostCoverUrl(
   return resolveFirstReachableBlossomUrl(comicBoostCoverCandidates(comic, blossomServers))
 }
 
-export function buildComicBoostContent(comic: Comic, comicUrl: string, appOrigin: string): string {
+export function buildComicBoostContent(
+  comic: Comic,
+  comicUrl: string,
+  coverUrl: string,
+  appOrigin: string,
+): string {
   const authorLabel = comic.author || comic.authorPubkey || comic.pubkey
   const authorRef = getAuthorNostrRef(comic.authorPubkey)
   const body = authorLabel
     ? `Check out ${comic.title} by ${authorLabel}`
     : `Check out ${comic.title}`
+  const coverLine = coverUrl || ''
   const hashtags = comic.tags.length > 0 ? comic.tags.map((tag) => `#${tag}`).join(' ') : ''
   const footer = appOrigin ? `Get #mangatsu at ${appOrigin}` : ''
 
-  return [body, authorRef, comicUrl, hashtags, footer].filter(Boolean).join('\n')
+  return [coverLine, body, authorRef, comicUrl, hashtags, footer].filter(Boolean).join('\n')
 }
 
 function getAuthorNostrRef(authorPubkey: string): string {
@@ -55,6 +61,7 @@ export function buildComicBoostTags(comic: Comic, coverUrl: string, comicUrl: st
   const tags: string[][] = [
     ['r', comicUrl],
     ['image', coverUrl, comic.title],
+    ['imeta', `url ${coverUrl}`, 'm image/webp', `alt ${comic.title}`, `x ${comic.coverHash}`],
   ]
 
   if (comic.authorPubkey) {
