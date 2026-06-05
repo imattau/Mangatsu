@@ -15,10 +15,14 @@ It is designed around a few core ideas:
 ## What it does
 
 - Read comics in a fast library/feed/reader flow
+- Browse a global feed, a follows feed, and an author feed
+- Filter the feed by tags or authors, with author avatars and names from Nostr profiles
 - Publish new comics and chapters
 - Edit comic metadata and cover art after publishing
 - Add chapters to an existing comic without changing its metadata
+- Edit or delete individual chapters after publication
 - Save comics to a synced, encrypted library list
+- Mark comics for offline reading
 - Sync Blossom servers to your Nostr profile
 - Upload CBZ or PDF chapters
 - Convert uploaded images to WebP in-browser before upload
@@ -104,7 +108,16 @@ Saved comics can hydrate their metadata even on a fresh device or browser sessio
 
 ### Feed
 
-The feed shows discovered comics and supports filtering by tag.
+The feed shows discovered comics and supports filtering by tag or author.
+
+It includes:
+
+- a global feed
+- a follows feed
+- an author feed
+- author avatars and display names when Nostr profile data is available
+
+Clicking a tag or author filters the current feed view.
 
 ### Comic Detail
 
@@ -115,9 +128,12 @@ The comic detail page shows:
 - tags
 - chapters
 - Blossom availability for declared assets
+- offline availability and caching controls
 - owner actions such as:
   - add chapter
   - edit details
+  - edit chapter metadata
+  - delete chapter
   - delete comic
   - save / unsave
   - add to library
@@ -128,7 +144,7 @@ The reader supports:
 
 - chapter navigation
 - page progress persistence
-- mobile-friendly scroll snapping
+- mobile-friendly scroll snapping and touch-friendly paging
 - image fallback across multiple Blossom servers
 
 ### Settings
@@ -165,6 +181,14 @@ Owners can also edit comic metadata separately from chapter uploads. This is for
 - cover image mistakes
 
 Editing metadata does not require a new chapter.
+
+### Edit a chapter
+
+From comic detail, owners can edit an existing chapter’s metadata and republish the chapter event without creating a new chapter.
+
+### Delete a chapter
+
+From comic detail, owners can delete individual chapters. The chapter is removed locally and the delete is republished so other devices can converge on the same state.
 
 ## Upload Formats
 
@@ -225,6 +249,18 @@ Highlights:
 - image resolution is normalized before upload
 - the reader and comic detail page try multiple candidate servers
 - image resolution can fall back when a server is missing an asset
+- uploads record which Blossom servers successfully stored each asset
+- partial coverage is allowed as long as each asset has at least one reachable copy
+
+## Offline Reading
+
+The comic detail page can cache a comic for offline reading.
+
+When you mark a comic offline:
+
+- the cover and chapter pages are cached locally through the service worker
+- only one successful Blossom URL per asset is cached
+- the cached asset can then be opened later without a network connection
 
 The comic detail page also shows a Blossom availability panel that checks whether the declared comic assets are actually reachable.
 
