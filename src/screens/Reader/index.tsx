@@ -8,7 +8,7 @@ import { usePageObserver } from './usePageObserver'
 import { useProgressPublisher } from './useProgressPublisher'
 import { usePagePreloader } from './usePagePreloader'
 import { BlossomImage } from '@/components/BlossomImage'
-import { webTorrentService } from '@/services/WebTorrentService'
+
 
 function chapterNumber(dTag: string): number {
   const match = dTag.match(/(\d+(?:\.\d+)?)$/)
