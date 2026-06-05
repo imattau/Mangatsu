@@ -52,7 +52,7 @@ describe('WebTorrentService', () => {
     const expectedMagnet = 'magnet:?xt=urn:btih:dummy'
     const expectedInfoHash = 'dummy'
 
-    mockSeed.mockImplementation((files, options, cb) => {
+    mockSeed.mockImplementation((_files, _options, cb) => {
       // Simulate ready event and callback
       const torrent = {
         magnetURI: expectedMagnet,

@@ -18,6 +18,7 @@ export interface UploadResult {
   pageUploads: UploadArtifact[]
   coverUpload: UploadArtifact | null
   serverResults: ServerResult[]
+  magnetURI?: string
 }
 
 type UploadArtifactState = UploadArtifact & { missingServers: string[] }

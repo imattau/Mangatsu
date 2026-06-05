@@ -74,7 +74,7 @@ export class WebTorrentService {
     }
 
     // Wait for metadata to resolve if not loaded yet
-    if (!torrent.metadata) {
+    if (!(torrent as any).metadata) {
       await new Promise<void>((resolve) => {
         torrent!.once('ready', () => resolve())
       })
@@ -91,7 +91,7 @@ export class WebTorrentService {
     }
 
     return new Promise<Blob>((resolve, reject) => {
-      file.blob((err, blob) => {
+      (file as any).blob((err: Error | undefined, blob: Blob | undefined) => {
         if (err) reject(err)
         else if (blob) resolve(blob)
         else reject(new Error('No blob returned'))
@@ -109,7 +109,7 @@ export class WebTorrentService {
         {
           name,
           announceList: trackers.map((t) => [t]),
-        },
+        } as any,
         (torrent) => {
           this.torrents.set(torrent.magnetURI, torrent)
           resolve({
