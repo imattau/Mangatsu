@@ -1,5 +1,7 @@
 # Mangatsu
 
+![Mangatsu logo](public/favicon.webp)
+
 Mangatsu is a comic and manga reader/publisher for the Nostr network.
 
 It is designed around a few core ideas:
