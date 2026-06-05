@@ -23,6 +23,12 @@ export async function uploadFileToServers(
   upload: (serverUrl: string) => Promise<{ sha256: string; url: string }>,
   setCachedHash: (hash: string, objectUrl: string) => void,
 ): Promise<UploadArtifact> {
+  type UploadAttemptResult = {
+    serverUrl: string
+    sha256: string
+    url: string
+  }
+
   const attempts = await Promise.allSettled(
     serverUrls.map(async (serverUrl) => {
       const result = await upload(serverUrl)
@@ -36,10 +42,13 @@ export async function uploadFileToServers(
   )
 
   const successfulServers = attempts
-    .filter((result): result is PromiseFulfilledResult<{ serverUrl: string; sha256: string; url: string }> =>
+    .filter((result): result is PromiseFulfilledResult<UploadAttemptResult> =>
       result.status === 'fulfilled',
     )
     .map((result) => result.value)
+  const missingServers = attempts
+    .map((result, index) => (result.status === 'rejected' ? serverUrls[index] : null))
+    .filter((serverUrl): serverUrl is string => Boolean(serverUrl))
 
   if (successfulServers.length === 0) {
     throw new Error('Failed to upload to any Blossom server.')
@@ -48,5 +57,6 @@ export async function uploadFileToServers(
   return {
     hash: successfulServers[0].sha256,
     servers: successfulServers.map((result) => result.serverUrl),
+    missingServers,
   }
 }

@@ -144,7 +144,7 @@ export function ReaderScreen() {
       {/* Pages */}
       <main
         ref={scrollContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain snap-y snap-mandatory touch-pan-y md:snap-none"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain snap-y snap-proximity touch-pan-y md:snap-none"
       >
         <div className="mx-auto max-w-2xl">
           {pageUrls.map((page, idx) => (

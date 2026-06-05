@@ -50,6 +50,21 @@ const SettingsIcon = () => (
   </svg>
 )
 
+const RefreshIcon = ({ className = '' }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={`h-4 w-4 shrink-0 ${className}`.trim()}
+  >
+    <path d="M20 11a8 8 0 1 0 2 5.3" />
+    <path d="M20 5v6h-6" />
+  </svg>
+)
+
 const HamburgerIcon = ({ open }: { open: boolean }) => (
   <svg
     viewBox="0 0 24 24"
@@ -142,7 +157,7 @@ type SavedEntry = {
 }
 
 export function LibraryScreen() {
-  const { service } = useNostr()
+  const { service, refreshSync } = useNostr()
   const eventStore = useEventStore()
   const pubkey = useAuthStore((state) => state.pubkey)
   const comics = useComicStore((state) => state.comics)
@@ -218,6 +233,10 @@ export function LibraryScreen() {
     () => Object.values(comics).sort((a, b) => a.title.localeCompare(b.title)),
     [comics],
   )
+  const ownComics = useMemo(
+    () => allComics.filter((comic) => comic.pubkey === pubkey),
+    [allComics, pubkey],
+  )
 
   const latestProgress = useMemo(
     () =>
@@ -265,24 +284,6 @@ export function LibraryScreen() {
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <HeaderNav />
-            <div
-              className={`inline-flex items-center gap-2 rounded-full border bg-zinc-950/80 px-3 py-1.5 text-xs transition ${
-                relayOnline
-                  ? 'border-emerald-500/30 text-emerald-300'
-                  : 'border-rose-500/30 text-rose-300'
-              }`}
-              title={relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
-              aria-label={relayOnline ? `${onlineCount} relays online` : 'Offline cache'}
-              >
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    relayOnline ? 'bg-emerald-400' : 'bg-rose-400'
-                  }`}
-                />
-                <span className="hidden sm:inline">
-                  {relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
-                </span>
-              </div>
             <Link
               to="/upload"
               aria-label="Upload a comic"
@@ -291,6 +292,34 @@ export function LibraryScreen() {
               <UploadIcon />
               <span className="hidden sm:inline">Upload a comic</span>
             </Link>
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border bg-zinc-950/80 px-3 py-1.5 text-xs transition ${
+                relayOnline
+                  ? 'border-emerald-500/30 text-emerald-300'
+                  : 'border-rose-500/30 text-rose-300'
+              }`}
+              title={relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
+              aria-label={relayOnline ? `${onlineCount} relays online` : 'Offline cache'}
+            >
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${
+                  relayOnline ? 'bg-emerald-400' : 'bg-rose-400'
+                }`}
+              />
+              <span className="hidden sm:inline">
+                {relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={refreshSync}
+              aria-label="Refresh relays"
+              title="Refresh relays"
+              className="hidden items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white sm:inline-flex"
+            >
+              <RefreshIcon />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
             <Link
               to="/settings"
               aria-label="Settings"
@@ -319,6 +348,17 @@ export function LibraryScreen() {
                     <UploadIcon />
                     Upload
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false)
+                      refreshSync()
+                    }}
+                    className="flex w-full items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
+                  >
+                    <RefreshIcon />
+                    Refresh
+                  </button>
                   <Link
                     to="/settings"
                     onClick={() => setMobileMenuOpen(false)}
@@ -387,7 +427,7 @@ export function LibraryScreen() {
           </section>
         ) : null}
 
-        {allComics.length === 0 && queuedDrafts.length === 0 && savedATags.length === 0 ? (
+        {ownComics.length === 0 && queuedDrafts.length === 0 && savedATags.length === 0 ? (
           <section className="flex min-h-[50vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
             <p className="text-lg font-medium text-zinc-100">No comics yet</p>
             <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
@@ -402,14 +442,14 @@ export function LibraryScreen() {
           </section>
         ) : (
           <>
-            {allComics.length > 0 && (
+            {ownComics.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">My Comics</p>
-                  <p className="text-xs text-zinc-600">{allComics.length} total</p>
+                  <p className="text-xs text-zinc-600">{ownComics.length} total</p>
                 </div>
                 <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-                  {allComics.map((comic) => (
+                  {ownComics.map((comic) => (
                     <Link
                       key={comic.dTag}
                       to={`/comic/${comic.dTag}`}

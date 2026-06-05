@@ -514,7 +514,7 @@ describe('ReaderScreen — integration smoke', () => {
   it('enables snap scrolling on the page container', () => {
     const { container } = renderReader()
     const main = container.querySelector('main')
-    expect(main).toHaveClass('snap-y', 'snap-mandatory', 'overflow-y-auto')
+    expect(main).toHaveClass('snap-y', 'snap-proximity', 'overflow-y-auto')
     expect(screen.getAllByRole('img')[0]).toHaveClass('snap-start', 'snap-always')
   })
 })

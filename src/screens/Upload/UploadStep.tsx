@@ -19,6 +19,8 @@ export interface UploadResult {
   serverResults: ServerResult[]
 }
 
+type UploadArtifactState = UploadArtifact & { missingServers: string[] }
+
 interface UploadStepProps {
   pages: File[]
   coverFile: File | null
@@ -73,11 +75,11 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function uploadToAll(file: File, serverUrls: string[]): Promise<UploadArtifact> {
+  async function uploadToAll(file: File, serverUrls: string[]): Promise<UploadArtifactState> {
     const account = service.accountManager.active
     if (!account) throw new Error('Not logged in')
 
-    return uploadFileToServers(
+    const upload = await uploadFileToServers(
       serverUrls,
       (serverUrl) =>
         withTimeout(
@@ -87,6 +89,11 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
         ),
       setCachedHash,
     )
+
+    return {
+      ...upload,
+      missingServers: upload.missingServers ?? [],
+    }
   }
 
   async function convertAndUploadToAll(file: File, serverUrls: string[]): Promise<UploadArtifact> {
@@ -110,12 +117,15 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     }
 
     const serverUrls = getUploadServers()
-    const pageUploads: UploadArtifact[] = []
+    const pageUploads: UploadArtifactState[] = []
 
     for (const page of pages) {
       try {
         const upload = await convertAndUploadToAll(page, serverUrls)
-        pageUploads.push(upload)
+        pageUploads.push({
+          ...upload,
+          missingServers: upload.missingServers ?? [],
+        })
         setUploaded((n) => n + 1)
       } catch (err) {
         setError(`Failed to upload page: ${err instanceof Error ? err.message : String(err)}`)
@@ -125,11 +135,15 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
       }
     }
 
-    let coverUpload: UploadArtifact | null = null
+    let coverUpload: UploadArtifactState | null = null
     const coverSource = coverMode === 'first-page' ? pages[0] : coverFile
     if (coverSource) {
       try {
-        coverUpload = await convertAndUploadToAll(coverSource, serverUrls)
+        const upload = await convertAndUploadToAll(coverSource, serverUrls)
+        coverUpload = {
+          ...upload,
+          missingServers: upload.missingServers ?? [],
+        }
         setUploaded((n) => n + 1)
       } catch (err) {
         setError(`Failed to upload cover: ${err instanceof Error ? err.message : String(err)}`)
@@ -191,7 +205,10 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
             </button>
             <button
               type="button"
-              onClick={() => { ranRef.current = false; setUploaded(0); void run() }}
+              onClick={() => {
+                ranRef.current = false
+                void run()
+              }}
               className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
             >
               Retry

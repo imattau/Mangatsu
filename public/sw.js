@@ -1,6 +1,6 @@
 const SHELL_CACHE = 'mangatsu-shell-v2'
 const IMAGE_CACHE = 'mangatsu-images-v1'
-const PRECACHE_URLS = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg']
+const PRECACHE_URLS = ['/', '/index.html', '/manifest.webmanifest', '/favicon.webp']
 
 async function cacheRemoteImages(urls) {
   const cache = await caches.open(IMAGE_CACHE)

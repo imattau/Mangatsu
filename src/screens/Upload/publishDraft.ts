@@ -8,6 +8,7 @@ import { slugify } from './slugify'
 export interface UploadArtifact {
   hash: string
   servers: string[]
+  missingServers?: string[]
 }
 
 export interface PublishDraftInput {
