@@ -42,6 +42,8 @@ export function SettingsScreen() {
   const setShowNsfw = useSettingsStore((s) => s.setShowNsfw)
   const [nwcInput, setNwcInput] = useState('')
   const [newUrl, setNewUrl] = useState('')
+  const [isBlossomOpen, setIsBlossomOpen] = useState(false)
+  const [isRelaysOpen, setIsRelaysOpen] = useState(false)
   const displayRelays = activeRelays()
   const usingDefaultRelays = userRelays.length === 0
 
@@ -110,91 +112,129 @@ export function SettingsScreen() {
 
         {/* Blossom Servers */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
-          <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">Blossom Servers</p>
-          <ul className="mb-4 space-y-2">
-            {servers.length === 0 ? (
-              <>
-                <li className="mb-1 text-xs text-zinc-600">No servers configured — using defaults (kind 10063)</li>
-                {DEFAULT_BLOSSOM_SERVERS.map((url, i) => (
+          <button
+            onClick={() => setIsBlossomOpen(!isBlossomOpen)}
+            className="flex w-full items-center justify-between text-left focus:outline-none"
+            aria-expanded={isBlossomOpen}
+          >
+            <span className="text-xs uppercase tracking-[0.35em] text-zinc-500 font-semibold">Blossom Servers</span>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-4 w-4 text-zinc-500 transition-transform duration-200 ${isBlossomOpen ? 'rotate-180' : ''}`}
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+          <div className={`mt-4 ${isBlossomOpen ? 'block' : 'hidden'}`}>
+            <ul className="mb-4 space-y-2">
+              {servers.length === 0 ? (
+                <>
+                  <li className="mb-1 text-xs text-zinc-600">No servers configured — using defaults (kind 10063)</li>
+                  {DEFAULT_BLOSSOM_SERVERS.map((url, i) => (
+                    <li
+                      key={url}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/50 px-4 py-3 opacity-50"
+                    >
+                      <div className="min-w-0">
+                        {i === 0 && (
+                          <span className="mb-1 block text-[0.6rem] uppercase tracking-widest text-zinc-500">
+                            Primary (default)
+                          </span>
+                        )}
+                        <p className="truncate text-sm text-zinc-400">{url}</p>
+                      </div>
+                      <span className="flex-shrink-0 text-xs text-zinc-600">(default)</span>
+                    </li>
+                  ))}
+                </>
+              ) : (
+                servers.map((server, i) => (
                   <li
-                    key={url}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800/50 px-4 py-3 opacity-50"
+                    key={server.url}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3"
                   >
                     <div className="min-w-0">
                       {i === 0 && (
                         <span className="mb-1 block text-[0.6rem] uppercase tracking-widest text-zinc-500">
-                          Primary (default)
+                          Primary
                         </span>
                       )}
-                      <p className="truncate text-sm text-zinc-400">{url}</p>
+                      <p className="truncate text-sm text-zinc-100">{server.url}</p>
                     </div>
-                    <span className="flex-shrink-0 text-xs text-zinc-600">(default)</span>
+                    <button
+                      onClick={() => handleRemoveServer(server.url)}
+                      aria-label={`Remove ${server.url}`}
+                      className="flex-shrink-0 rounded-full border border-zinc-800 px-2.5 py-1 text-sm text-zinc-500 transition hover:border-red-800 hover:text-red-400"
+                    >
+                      ×
+                    </button>
                   </li>
-                ))}
-              </>
-            ) : (
-              servers.map((server, i) => (
-                <li
-                  key={server.url}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    {i === 0 && (
-                      <span className="mb-1 block text-[0.6rem] uppercase tracking-widest text-zinc-500">
-                        Primary
-                      </span>
-                    )}
-                    <p className="truncate text-sm text-zinc-100">{server.url}</p>
-                  </div>
-                  <button
-                    onClick={() => handleRemoveServer(server.url)}
-                    aria-label={`Remove ${server.url}`}
-                    className="flex-shrink-0 rounded-full border border-zinc-800 px-2.5 py-1 text-sm text-zinc-500 transition hover:border-red-800 hover:text-red-400"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-          <div className="flex gap-2">
-            <input
-              type="url"
-              value={newUrl}
-              onChange={(e) => setNewUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddServer()}
-              placeholder="https://blossom.example"
-              className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
-            />
-            <button
-              onClick={handleAddServer}
-              className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-            >
-              Add
-            </button>
+                ))
+              )}
+            </ul>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={newUrl}
+                onChange={(e) => setNewUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddServer()}
+                placeholder="https://blossom.example"
+                className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
+              />
+              <button
+                onClick={handleAddServer}
+                className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              >
+                Add
+              </button>
+            </div>
           </div>
         </section>
 
         {/* Relays */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
-          <p className="mb-1 text-xs uppercase tracking-[0.35em] text-zinc-500">Relays</p>
-          <p className="mb-4 text-xs text-zinc-600">
-            {usingDefaultRelays
-              ? pubkey
-                ? 'Using public defaults — no kind 10002 list found on your relays'
-                : 'Using public defaults — sign in to load your relay list'
-              : 'From your kind 10002 list'}
-          </p>
-          <ul className="space-y-2">
-            {displayRelays.map((relay) => (
-              <li
-                key={relay}
-                className="rounded-xl border border-zinc-800 px-4 py-3 font-mono text-sm text-zinc-400"
-              >
-                {relay}
-              </li>
-            ))}
-          </ul>
+          <button
+            onClick={() => setIsRelaysOpen(!isRelaysOpen)}
+            className="flex w-full items-center justify-between text-left focus:outline-none"
+            aria-expanded={isRelaysOpen}
+          >
+            <span className="text-xs uppercase tracking-[0.35em] text-zinc-500 font-semibold">Relays</span>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-4 w-4 text-zinc-500 transition-transform duration-200 ${isRelaysOpen ? 'rotate-180' : ''}`}
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+          <div className={`mt-4 ${isRelaysOpen ? 'block' : 'hidden'}`}>
+            <p className="mb-4 text-xs text-zinc-600">
+              {usingDefaultRelays
+                ? pubkey
+                  ? 'Using public defaults — no kind 10002 list found on your relays'
+                  : 'Using public defaults — sign in to load your relay list'
+                : 'From your kind 10002 list'}
+            </p>
+            <ul className="space-y-2">
+              {displayRelays.map((relay) => (
+                <li
+                  key={relay}
+                  className="rounded-xl border border-zinc-800 px-4 py-3 font-mono text-sm text-zinc-400"
+                >
+                  {relay}
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
         {/* Wallet (NWC) */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5" data-testid="nwc-section">
