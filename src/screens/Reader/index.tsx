@@ -186,10 +186,10 @@ export function ReaderScreen() {
           </div>
         </header>
       ) : (
-        <div className="pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 px-3 py-2 backdrop-blur">
+        <div className="pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/60 px-3 py-2 backdrop-blur">
           <Link
             to={`/comic/${dTag}`}
-            className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/80 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
+            className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/70 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
           >
             Back
           </Link>
@@ -202,7 +202,7 @@ export function ReaderScreen() {
             onClick={() => {
               void setFullscreenMode(false)
             }}
-            className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/80 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
+            className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/70 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
           >
             Exit
           </button>
@@ -214,8 +214,8 @@ export function ReaderScreen() {
         ref={scrollContainerRef}
         className={
           fullscreen
-            ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain snap-y snap-proximity touch-pan-y md:snap-none pt-16 pb-20'
-            : 'flex-1 min-h-0 overflow-y-auto overscroll-contain snap-y snap-proximity touch-pan-y md:snap-none'
+            ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-16 pb-20'
+            : 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y'
         }
       >
         <ZoomableReaderSurface
@@ -233,7 +233,7 @@ export function ReaderScreen() {
               servers={page.servers}
               torrent={page.torrent}
               alt={`Page ${idx + 1}`}
-              className="block w-full snap-start snap-always"
+              className="block w-full"
               loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}
             />
           ))}
@@ -246,7 +246,7 @@ export function ReaderScreen() {
             {prevChapter ? (
               <Link
                 to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}?view=full`}
-                className="rounded-xl border border-white/10 bg-zinc-950/80 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
+                className="rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
               >
                 ← Prev
               </Link>
@@ -258,7 +258,7 @@ export function ReaderScreen() {
             {nextChapter ? (
               <Link
                 to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}?view=full`}
-                className="rounded-xl border border-white/10 bg-zinc-950/80 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
+                className="rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
               >
                 Next →
               </Link>
