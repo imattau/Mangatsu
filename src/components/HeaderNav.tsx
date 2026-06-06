@@ -43,15 +43,14 @@ export function HeaderNav() {
     <nav className="flex items-center gap-1">
       {TABS.map(({ label, href, Icon }) => {
         const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href)
+        if (isActive) {
+          return null
+        }
         return (
           <Link
             key={href}
             to={href}
-            className={`inline-flex items-center gap-1.5 rounded-full border bg-zinc-950/80 px-3 py-1.5 text-sm transition ${
-              isActive
-                ? 'border-zinc-600 text-white'
-                : 'border-zinc-800 text-zinc-300 hover:border-zinc-600 hover:text-white'
-            }`}
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white"
           >
             <Icon />
             <span className="hidden sm:inline">{label}</span>

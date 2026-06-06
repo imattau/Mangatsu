@@ -15,34 +15,32 @@ describe('HeaderNav', () => {
   beforeEach(() => {
   })
 
-  it('renders Library and Feed nav items', () => {
+  it('renders only the non-active nav item on the Library route', () => {
     render(<Wrapper />)
-    // Labels are hidden on mobile but present in DOM
-    expect(screen.getByText('Library')).toBeInTheDocument()
     expect(screen.getByText('Feed')).toBeInTheDocument()
+    expect(screen.queryByText('Library')).not.toBeInTheDocument()
   })
 
-  it('Library link points to /', () => {
-    render(<Wrapper />)
+  it('renders only the non-active nav item on the Feed route', () => {
+    render(<Wrapper path="/feed" />)
+    expect(screen.getByText('Library')).toBeInTheDocument()
+    expect(screen.queryByText('Feed')).not.toBeInTheDocument()
+  })
+
+  it('Library link points to / from the Feed route', () => {
+    render(<Wrapper path="/feed" />)
     const libraryLink = screen.getByText('Library').closest('a')
     expect(libraryLink).toHaveAttribute('href', '/')
   })
 
-  it('Feed link points to /feed', () => {
+  it('Feed link points to /feed from the Library route', () => {
     render(<Wrapper />)
     const feedLink = screen.getByText('Feed').closest('a')
     expect(feedLink).toHaveAttribute('href', '/feed')
   })
 
-  it('Library tab is active on / route', () => {
+  it('does not render the active Library item on the Library route', () => {
     render(<Wrapper path="/" />)
-    const libraryLink = screen.getByText('Library').closest('a')
-    expect(libraryLink).toHaveClass('text-white')
-  })
-
-  it('Feed tab is active on /feed route', () => {
-    render(<Wrapper path="/feed" />)
-    const feedLink = screen.getByText('Feed').closest('a')
-    expect(feedLink).toHaveClass('text-white')
+    expect(screen.queryByText('Library')).not.toBeInTheDocument()
   })
 })
