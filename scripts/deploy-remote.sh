@@ -163,6 +163,7 @@ PORT="$6"
 PROXY_MODE="$7"
 DOMAIN="$8"
 CADDY_EMAIL="$9"
+DRY_RUN=false
 
 log() {
 	printf '[remote] %s\n' "$*"
@@ -219,7 +220,7 @@ choose_port() {
 }
 
 verify_build_artifacts() {
-	if [[ "$DRY_RUN" == true ]]; then
+	if [[ "${DRY_RUN:-false}" == true ]]; then
 		return
 	fi
 	if [[ ! -f "${INSTALL_DIR}/dist/index.html" ]]; then
