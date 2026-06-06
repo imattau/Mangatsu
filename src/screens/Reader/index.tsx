@@ -20,7 +20,10 @@ export function ReaderScreen() {
   const { dTag, chapterId } = useParams<{ dTag: string; chapterId: string }>()
   const chapterDTag = chapterId ? decodeURIComponent(chapterId) : ''
   const [searchParams, setSearchParams] = useSearchParams()
-  const fullscreen = searchParams.get('view') === 'full'
+  const viewMode = searchParams.get('view')
+  const [isSmallScreen, setIsSmallScreen] = useState(false)
+  const fullscreen = viewMode === 'full' || (isSmallScreen && viewMode !== 'compact')
+  const mobileDefaultAppliedRef = useRef(false)
 
   const comic = useComicStore((s) => (dTag ? s.comics[dTag] ?? null : null))
   const chaptersForComic = useComicStore((s) => s.chaptersForComic)
@@ -29,6 +32,25 @@ export function ReaderScreen() {
   const blossomServers = useBlossomStore((s) => s.servers)
   const setProgress = useReadStore((s) => s.setProgress)
   const scrollContainerRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+
+    const query = window.matchMedia('(max-width: 767px)')
+    const sync = () => setIsSmallScreen(query.matches)
+
+    sync()
+
+    if (!mobileDefaultAppliedRef.current && query.matches && !viewMode) {
+      mobileDefaultAppliedRef.current = true
+      const nextSearchParams = new URLSearchParams(searchParams)
+      nextSearchParams.set('view', 'full')
+      setSearchParams(nextSearchParams, { replace: true })
+    }
+
+    query.addEventListener('change', sync)
+    return () => query.removeEventListener('change', sync)
+  }, [searchParams, setSearchParams, viewMode])
 
   const allChapters = useMemo(
     () =>
@@ -128,7 +150,7 @@ export function ReaderScreen() {
       if (nextFullscreen) {
         nextSearchParams.set('view', 'full')
       } else {
-        nextSearchParams.delete('view')
+        nextSearchParams.set('view', 'compact')
       }
       setSearchParams(nextSearchParams, { replace: true })
     },

@@ -7,6 +7,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ReaderScreen } from '../screens/Reader'
 import type { Chapter, Comic, ReadingProgress } from '../types'
 
+const originalMatchMedia = window.matchMedia
+
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
 const mockChapter1: Chapter = {
@@ -195,6 +197,25 @@ function renderReader(
   )
 }
 
+function stubMatchMedia(matches: boolean) {
+  const createQueryList = (query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })
+
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => createQueryList(query)))
+  Object.defineProperty(window, 'matchMedia', {
+    value: vi.fn((query: string) => createQueryList(query)),
+    configurable: true,
+  })
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ReaderScreen — chapter not found', () => {
@@ -227,6 +248,7 @@ describe('ReaderScreen — page rendering', () => {
     mockBuildFn.mockClear()
     mockPublishFn.mockClear()
     mockBlossomImage.mockClear()
+    stubMatchMedia(false)
     class MockImage {
       onload: null | (() => void) = null
       onerror: null | (() => void) = null
@@ -245,6 +267,10 @@ describe('ReaderScreen — page rendering', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    Object.defineProperty(window, 'matchMedia', {
+      value: originalMatchMedia,
+      configurable: true,
+    })
   })
 
   it('renders one img per page hash', async () => {
@@ -448,6 +474,24 @@ describe('ReaderScreen — page rendering', () => {
     expect(container.querySelector('nav')).toBeNull()
     expect(screen.getByRole('button', { name: /exit/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /fullscreen/i })).not.toBeInTheDocument()
+  })
+
+  it('defaults to fullscreen on small screens', async () => {
+    stubMatchMedia(true)
+    const user = userEvent.setup()
+    const { container } = renderReader()
+
+    await waitFor(() => {
+      expect(container.querySelector('header')).toBeNull()
+      expect(screen.getByRole('button', { name: /exit/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /exit/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /fullscreen/i })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /exit/i })).not.toBeInTheDocument()
+    })
   })
 })
 
