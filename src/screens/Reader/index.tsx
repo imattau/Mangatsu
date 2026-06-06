@@ -4,7 +4,6 @@ import { useComicStore } from '@/stores/comicStore'
 import { useReadStore } from '@/stores/readStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { BoostButton } from '@/components/BoostButton'
-import { usePageObserver } from './usePageObserver'
 import { useProgressPublisher } from './useProgressPublisher'
 import { usePagePreloader } from './usePagePreloader'
 import { ZoomableReaderSurface } from './ZoomableReaderSurface'
@@ -31,8 +30,6 @@ export function ReaderScreen() {
   const primaryServer = useBlossomStore((s) => s.primaryServer)
   const blossomServers = useBlossomStore((s) => s.servers)
   const setProgress = useReadStore((s) => s.setProgress)
-  const scrollContainerRef = useRef<HTMLElement | null>(null)
-
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
 
@@ -84,6 +81,7 @@ export function ReaderScreen() {
             const pageServerList = chapter.pageServerLists?.[idx] ?? []
             const pageServer = chapter.pageServers?.[idx] || server
             const pageTorrent = chapter.pageTorrents?.[idx] || chapter.torrent
+            const dimensions = chapter.pageDimensions?.[idx]
             const explicitServers = [...new Set([...(pageServerList ?? []), pageServer].filter(Boolean))]
             const cachedUrl = cachedHashes[h] || ''
             return {
@@ -91,6 +89,7 @@ export function ReaderScreen() {
               server: pageServer,
               servers: explicitServers,
               torrent: pageTorrent,
+              dimensions,
               url: `${pageServer.replace(/\/$/, '')}/${h}`,
               cachedUrl,
               isCached: Boolean(cachedUrl),
@@ -101,12 +100,10 @@ export function ReaderScreen() {
   )
 
   const [currentPage, setCurrentPage] = useState(1)
-  const restoredChapterRef = useRef('')
   const savedPage = useReadStore((s) => s.progress[chapterDTag]?.page ?? 1)
 
   useEffect(() => {
     setCurrentPage(savedPage)
-    restoredChapterRef.current = ''
   }, [chapterDTag, savedPage])
 
   // One ref per page — stable across renders (keyed by pageUrls.length)
@@ -115,15 +112,6 @@ export function ReaderScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pageUrls.length],
   )
-
-  useEffect(() => {
-    if (!chapter || !chapterDTag || restoredChapterRef.current === chapterDTag) return
-    const targetIndex = Math.min(Math.max(savedPage, 1), pageRefs.length) - 1
-    const target = pageRefs[targetIndex]?.current
-    if (!target) return
-    target.scrollIntoView?.({ block: 'start' })
-    restoredChapterRef.current = chapterDTag
-  }, [chapter, chapterDTag, pageRefs, savedPage])
 
   const handleVisible = useCallback(
     (idx: number) => {
@@ -140,7 +128,6 @@ export function ReaderScreen() {
     [chapterDTag, setProgress],
   )
 
-  usePageObserver(pageRefs, handleVisible, scrollContainerRef)
   usePagePreloader(pageUrls, currentPage)
   useProgressPublisher(chapterDTag, currentPage)
 
@@ -233,16 +220,17 @@ export function ReaderScreen() {
 
       {/* Pages */}
       <main
-        ref={scrollContainerRef}
         className={
           fullscreen
-            ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y pt-16 pb-20'
-            : 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y'
+            ? 'flex-1 min-h-0 overflow-hidden pt-16 pb-20'
+            : 'flex-1 min-h-0 overflow-hidden'
         }
       >
         <ZoomableReaderSurface
           className={fullscreen ? 'mx-auto max-w-5xl' : 'mx-auto max-w-2xl'}
           resetKey={chapterDTag}
+          initialPage={savedPage}
+          onPageChange={handleVisible}
         >
           {pageUrls.map((page, idx) => (
             <BlossomImage
@@ -254,6 +242,8 @@ export function ReaderScreen() {
               server={page.server}
               servers={page.servers}
               torrent={page.torrent}
+              intrinsicWidth={page.dimensions?.width}
+              intrinsicHeight={page.dimensions?.height}
               alt={`Page ${idx + 1}`}
               className="block w-full"
               loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}

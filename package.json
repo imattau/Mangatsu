@@ -27,6 +27,7 @@
     "react-dom": "^19.2.6",
     "react-qr-code": "^2.0.21",
     "react-router-dom": "^7.16.0",
+    "react-zoom-pan-pinch": "^4.0.3",
     "webtorrent": "^3.0.16",
     "zustand": "^5.0.14"
   },

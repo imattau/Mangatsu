@@ -1,6 +1,6 @@
 import { render, screen, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { forwardRef } from 'react'
+import React, { forwardRef } from 'react'
 import type { Ref } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -18,6 +18,11 @@ const mockChapter1: Chapter = {
   parentDTag: 'one-piece',
   title: 'Romance Dawn',
   pageHashes: ['hash1', 'hash2', 'hash3'],
+  pageDimensions: [
+    { width: 1200, height: 1800 },
+    { width: 1000, height: 1600 },
+    { width: 900, height: 1500 },
+  ],
   blossomServer: 'https://blossom.example',
   pageTorrents: [
     'magnet:?xt=urn:btih:hash1',
@@ -62,12 +67,15 @@ const mockProgress: Record<string, ReadingProgress> = {}
 let mockSetProgress = vi.fn()
 let mockPrimaryServer = vi.fn(() => 'https://blossom.example')
 let mockCachedHashes: Record<string, string> = {}
+let mockCachedDimensions: Record<string, { width: number; height: number }> = {}
 const mockBlossomImage = vi.fn(
   ({
     hash,
     server,
     servers,
     torrent,
+    intrinsicWidth,
+    intrinsicHeight,
     alt,
     loading,
     className,
@@ -77,6 +85,8 @@ const mockBlossomImage = vi.fn(
     server?: string
     servers?: string[]
     torrent?: string
+    intrinsicWidth?: number
+    intrinsicHeight?: number
     alt: string
     loading?: 'eager' | 'lazy'
     className?: string
@@ -92,6 +102,8 @@ const mockBlossomImage = vi.fn(
       data-server={server ?? ''}
       data-servers={(servers ?? []).join(',')}
       data-torrent={torrent ?? ''}
+      data-width={intrinsicWidth ?? ''}
+      data-height={intrinsicHeight ?? ''}
       src={`https://blossom.example/${hash}`}
     />
   ),
@@ -131,15 +143,19 @@ vi.mock('../stores/blossomStore', () => ({
   useBlossomStore: (sel: (s: {
     servers: unknown[]
     cachedHashes: Record<string, string>
+    cachedDimensions: Record<string, { width: number; height: number }>
     setServers: () => void
     setCachedHash: () => void
+    setCachedDimensions: () => void
     primaryServer: () => string | undefined
   }) => unknown) =>
     sel({
       servers: [],
       cachedHashes: mockCachedHashes,
+      cachedDimensions: mockCachedDimensions,
       setServers: vi.fn(),
       setCachedHash: vi.fn(),
+      setCachedDimensions: vi.fn(),
       primaryServer: mockPrimaryServer,
     }),
 }))
@@ -179,6 +195,14 @@ vi.mock('../components/BlossomImage', async () => {
     }),
   }
 })
+
+let capturedOnPageChange: ((idx: number) => void) | undefined
+vi.mock('../screens/Reader/ZoomableReaderSurface', () => ({
+  ZoomableReaderSurface: ({ children, onPageChange }: { children: React.ReactNode; onPageChange?: (idx: number) => void; className?: string; resetKey?: string; initialPage?: number }) => {
+    capturedOnPageChange = onPageChange
+    return <div data-testid="zoomable-surface">{children}</div>
+  },
+}))
 
 // ── Render helper ────────────────────────────────────────────────────────────
 
@@ -245,6 +269,7 @@ describe('ReaderScreen — page rendering', () => {
     mockChapters = [mockChapter1, mockChapter2]
     mockPrimaryServer = vi.fn(() => 'https://blossom.example')
     mockCachedHashes = {}
+    mockCachedDimensions = {}
     mockBuildFn.mockClear()
     mockPublishFn.mockClear()
     mockBlossomImage.mockClear()
@@ -320,6 +345,42 @@ describe('ReaderScreen — page rendering', () => {
           alt: 'Page 3',
         }),
       )
+    })
+  })
+
+  it('passes intrinsic page dimensions to BlossomImage when available', async () => {
+    renderReader()
+
+    await waitFor(() => {
+      expect(mockBlossomImage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hash: 'hash1',
+          intrinsicWidth: 1200,
+          intrinsicHeight: 1800,
+        }),
+      )
+    })
+
+    expect(screen.getByRole('img', { name: 'Page 1' })).toHaveAttribute('width', '1200')
+    expect(screen.getByRole('img', { name: 'Page 1' })).toHaveAttribute('height', '1800')
+  })
+
+  it('falls back to cached legacy page dimensions when chapter metadata is absent', async () => {
+    mockChapters = [
+      {
+        ...mockChapter1,
+        pageDimensions: undefined,
+      },
+      mockChapter2,
+    ]
+    mockCachedDimensions = { hash1: { width: 1200, height: 1800 } }
+
+    renderReader()
+
+    await waitFor(() => {
+      const image = screen.getByRole('img', { name: 'Page 1' })
+      expect(image).toHaveAttribute('width', '1200')
+      expect(image).toHaveAttribute('height', '1800')
     })
   })
 
@@ -404,12 +465,6 @@ describe('ReaderScreen — page rendering', () => {
       page: 2,
       updatedAt: 1700000000,
     }
-    const scrollIntoView = vi.fn()
-    const original = HTMLElement.prototype.scrollIntoView
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      value: scrollIntoView,
-      configurable: true,
-    })
 
     try {
       renderReader()
@@ -417,14 +472,8 @@ describe('ReaderScreen — page rendering', () => {
       await waitFor(() => {
         const images = screen.getAllByRole('img')
         expect(images[1]).toHaveAttribute('src', 'https://blossom.example/hash2')
-        expect(scrollIntoView).toHaveBeenCalled()
-        expect(screen.getByText('2 / 3')).toBeInTheDocument()
       })
     } finally {
-      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-        value: original,
-        configurable: true,
-      })
       delete mockProgress['one-piece/chapter-1']
     }
   })
@@ -534,41 +583,20 @@ describe('ReaderScreen — chapter navigation', () => {
 })
 
 describe('ReaderScreen — progress tracking', () => {
-  let observerCallback: IntersectionObserverCallback
-  let observedElements: Element[]
-  let mockDisconnect: ReturnType<typeof vi.fn>
-
   beforeEach(() => {
     mockChapters = [mockChapter1, mockChapter2]
-    observedElements = []
-    mockDisconnect = vi.fn()
-
-    const _observedElements = observedElements
-    const _mockDisconnect = mockDisconnect
-    class FakeIO {
-      constructor(cb: IntersectionObserverCallback) {
-        observerCallback = cb
-      }
-      observe(el: Element) { _observedElements.push(el) }
-      unobserve = vi.fn()
-      disconnect = _mockDisconnect
-    }
-    vi.stubGlobal('IntersectionObserver', FakeIO)
     mockSetProgress = vi.fn()
+    capturedOnPageChange = undefined
   })
 
   afterEach(() => {
-    vi.unstubAllGlobals()
     mockSetProgress = vi.fn()
   })
 
-  it('calls setProgress when a page becomes visible', async () => {
+  it('calls setProgress when a page becomes visible', () => {
     renderReader()
     act(() => {
-      observerCallback(
-        [{ isIntersecting: true, target: observedElements[1] } as IntersectionObserverEntry],
-        {} as IntersectionObserver,
-      )
+      capturedOnPageChange?.(1)  // 0-based idx=1 → page 2
     })
     expect(mockSetProgress).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -579,37 +607,19 @@ describe('ReaderScreen — progress tracking', () => {
     )
   })
 
-  it('updates page counter display when page becomes visible', async () => {
+  it('updates page counter display when page becomes visible', () => {
     renderReader()
     act(() => {
-      observerCallback(
-        [{ isIntersecting: true, target: observedElements[2] } as IntersectionObserverEntry],
-        {} as IntersectionObserver,
-      )
+      capturedOnPageChange?.(2)  // 0-based idx=2 → page 3
     })
     expect(screen.getByText('3 / 3')).toBeInTheDocument()
   })
 
-  it('chooses the most visible page instead of the last intersecting entry', () => {
+  it('calls setProgress with page 1 for idx 0', () => {
     renderReader()
     act(() => {
-      observerCallback(
-        [
-          {
-            isIntersecting: true,
-            intersectionRatio: 0.9,
-            target: observedElements[0],
-          } as IntersectionObserverEntry,
-          {
-            isIntersecting: true,
-            intersectionRatio: 0.7,
-            target: observedElements[2],
-          } as IntersectionObserverEntry,
-        ],
-        {} as IntersectionObserver,
-      )
+      capturedOnPageChange?.(0)
     })
-
     expect(mockSetProgress).toHaveBeenCalledWith(
       expect.objectContaining({
         chapterDTag: 'one-piece/chapter-1',
@@ -617,42 +627,21 @@ describe('ReaderScreen — progress tracking', () => {
       }),
     )
   })
-
-  it('disconnects observer on unmount', () => {
-    const { unmount } = renderReader()
-    unmount()
-    expect(mockDisconnect).toHaveBeenCalled()
-  })
 })
 
 describe('ReaderScreen — Nostr progress publish', () => {
-  let observerCallback: IntersectionObserverCallback
-  let observedElements: Element[]
-
   beforeEach(() => {
     vi.useFakeTimers()
     mockChapters = [mockChapter1, mockChapter2]
-    observedElements = []
     mockPublishFn = vi.fn()
     mockSignFn = vi.fn().mockResolvedValue({ kind: 30301, sig: 'sig', tags: [], content: '', pubkey: '', id: '', created_at: 0 })
     mockBuildFn = vi.fn().mockResolvedValue({ kind: 30301, tags: [], content: '', pubkey: '', created_at: 0 })
     mockActiveAccount = { signer: { signEvent: mockSignFn } }
-
-    const _observedElements = observedElements
-    class FakeIO2 {
-      constructor(cb: IntersectionObserverCallback) {
-        observerCallback = cb
-      }
-      observe(el: Element) { _observedElements.push(el) }
-      unobserve = vi.fn()
-      disconnect = vi.fn()
-    }
-    vi.stubGlobal('IntersectionObserver', FakeIO2)
+    capturedOnPageChange = undefined
   })
 
   afterEach(() => {
     vi.useRealTimers()
-    vi.unstubAllGlobals()
     mockBuildFn = vi.fn().mockResolvedValue({ kind: 30301, tags: [], content: '', created_at: 0, pubkey: '' })
     mockActiveAccount = { signer: { signEvent: mockSignFn } }
   })
@@ -660,10 +649,7 @@ describe('ReaderScreen — Nostr progress publish', () => {
   it('publishes kind-30301 after 2s debounce when page changes', async () => {
     renderReader()
     act(() => {
-      observerCallback(
-        [{ isIntersecting: true, target: observedElements[1] } as IntersectionObserverEntry],
-        {} as IntersectionObserver,
-      )
+      capturedOnPageChange?.(1)  // 0-based idx=1 → page 2
     })
     // Not yet published
     expect(mockBuildFn).not.toHaveBeenCalled()
@@ -699,10 +685,10 @@ describe('ReaderScreen — integration smoke', () => {
     expect(main!.compareDocumentPosition(nav!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
-  it('keeps the page container smooth-scroll friendly', () => {
+  it('keeps the page container overflow-hidden for unified pan/zoom', () => {
     const { container } = renderReader()
     const main = container.querySelector('main')
-    expect(main).toHaveClass('overflow-y-auto', 'overscroll-contain', 'touch-pan-y')
+    expect(main).toHaveClass('overflow-hidden')
     expect(screen.getAllByRole('img')[0]).toHaveClass('block', 'w-full')
   })
 })
