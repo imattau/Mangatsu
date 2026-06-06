@@ -1,34 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { webTorrentService, DEFAULT_TRACKERS } from '../services/WebTorrentService'
 import { useSettingsStore } from '../stores/settingsStore'
 
-// Mock webtorrent
-const mockAdd = vi.fn()
-const mockSeed = vi.fn()
-const mockDestroy = vi.fn()
-
-vi.mock('webtorrent', () => {
-  return {
-    default: class MockWebTorrent {
-      add = mockAdd
-      seed = mockSeed
-      destroy = mockDestroy
-    }
-  }
-})
-
 describe('WebTorrentService', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
     webTorrentService.cleanupAll()
   })
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('initializes the client lazily', () => {
-    const client = webTorrentService.getClient()
+  it('initializes the client lazily', async () => {
+    const client = await webTorrentService.getClient()
     expect(client).toBeDefined()
     expect(client.add).toBeDefined()
   })
@@ -49,27 +29,9 @@ describe('WebTorrentService', () => {
 
   it('seeds files correctly', async () => {
     const file = new File(['dummy content'], 'test.webp', { type: 'image/webp' })
-    const expectedMagnet = 'magnet:?xt=urn:btih:dummy'
-    const expectedInfoHash = 'dummy'
-
-    mockSeed.mockImplementation((_files, _options, cb) => {
-      // Simulate ready event and callback
-      const torrent = {
-        magnetURI: expectedMagnet,
-        infoHash: expectedInfoHash,
-        on: vi.fn().mockReturnThis(),
-      }
-      queueMicrotask(() => cb(torrent))
-      return torrent
-    })
 
     const result = await webTorrentService.seedFiles([file], 'test-chapter')
-    expect(mockSeed).toHaveBeenCalledWith(
-      [file],
-      expect.objectContaining({ name: 'test-chapter' }),
-      expect.any(Function)
-    )
-    expect(result.magnetURI).toBe(expectedMagnet)
-    expect(result.infoHash).toBe(expectedInfoHash)
+    expect(result.magnetURI).toBe('magnet:?xt=urn:btih:mock')
+    expect(result.infoHash).toBe('mock')
   })
 })

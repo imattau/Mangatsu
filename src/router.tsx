@@ -1,15 +1,24 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
-import { LoginScreen } from '@/screens/Login'
-import { LibraryScreen } from '@/screens/Library'
-import { ComicDetailScreen } from '@/screens/ComicDetail'
-import { ReaderScreen } from '@/screens/Reader'
-import { UploadScreen } from '@/screens/Upload'
-import { SettingsScreen } from '@/screens/Settings'
-import { FeedScreen } from '@/screens/Feed'
 import { AppLayout } from '@/components/AppLayout'
 import { useAuthStore } from '@/stores/authStore'
+
+const LoginScreen = lazy(() => import('@/screens/Login').then((module) => ({ default: module.LoginScreen })))
+const LibraryScreen = lazy(() => import('@/screens/Library').then((module) => ({ default: module.LibraryScreen })))
+const ComicDetailScreen = lazy(() => import('@/screens/ComicDetail').then((module) => ({ default: module.ComicDetailScreen })))
+const ReaderScreen = lazy(() => import('@/screens/Reader').then((module) => ({ default: module.ReaderScreen })))
+const UploadScreen = lazy(() => import('@/screens/Upload').then((module) => ({ default: module.UploadScreen })))
+const SettingsScreen = lazy(() => import('@/screens/Settings').then((module) => ({ default: module.SettingsScreen })))
+const FeedScreen = lazy(() => import('@/screens/Feed').then((module) => ({ default: module.FeedScreen })))
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-zinc-950 text-sm text-zinc-500">
+      Loading...
+    </div>
+  )
+}
 
 function useAuthHydrated() {
   const [hydrated, setHydrated] = useState(() => useAuthStore.persist.hasHydrated())
@@ -31,7 +40,13 @@ function ProtectedRoute() {
     return null
   }
 
-  return pubkey ? <Outlet /> : <Navigate to="/login" replace />
+  return pubkey ? (
+    <Suspense fallback={<RouteFallback />}>
+      <Outlet />
+    </Suspense>
+  ) : (
+    <Navigate to="/login" replace />
+  )
 }
 
 function LoginRoute() {
@@ -42,7 +57,13 @@ function LoginRoute() {
     return null
   }
 
-  return pubkey ? <Navigate to="/" replace /> : <LoginScreen />
+  return pubkey ? (
+    <Navigate to="/" replace />
+  ) : (
+    <Suspense fallback={<RouteFallback />}>
+      <LoginScreen />
+    </Suspense>
+  )
 }
 
 export const router = createBrowserRouter([

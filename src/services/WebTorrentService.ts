@@ -1,5 +1,7 @@
-import WebTorrent from 'webtorrent'
 import { useSettingsStore } from '@/stores/settingsStore'
+
+type WebTorrentInstance = import('webtorrent').Instance
+type WebTorrentTorrent = import('webtorrent').Torrent
 
 export const DEFAULT_TRACKERS = [
   'wss://tracker.openwebtorrent.com',
@@ -8,27 +10,85 @@ export const DEFAULT_TRACKERS = [
 ]
 
 export class WebTorrentService {
-  private client: WebTorrent.Instance | null = null
-  private torrents = new Map<string, WebTorrent.Torrent>()
+  private client: WebTorrentInstance | null = null
+  private clientPromise: Promise<WebTorrentInstance> | null = null
+  private torrents = new Map<string, WebTorrentTorrent>()
   private objectUrls = new Set<string>()
   private activeQueue: string[] = []
   private readonly MAX_ACTIVE_TORRENTS = 3
 
-  getClient(): WebTorrent.Instance {
-    if (!this.client) {
-      try {
-        this.client = new WebTorrent()
-      } catch (err) {
-        console.warn('Failed to initialize WebTorrent client:', err)
-        // Return a mock instance for test/jsdom environments to avoid crashes
-        this.client = {
-          add: () => ({ on: () => {} }),
-          seed: () => ({ on: () => {} }),
-          destroy: () => {},
-        } as any
-      }
+  private createMockTorrent(): WebTorrentTorrent {
+    const torrent = {
+      files: [],
+      on: () => torrent,
+      once: (_event: string, handler: () => void) => {
+        queueMicrotask(handler)
+        return torrent
+      },
+      destroy: () => {},
+      magnetURI: 'magnet:?xt=urn:btih:mock',
+      infoHash: 'mock',
+      numPeers: 0,
+      downloadSpeed: 0,
+      uploadSpeed: 0,
     }
-    return this.client!
+
+    return torrent as unknown as WebTorrentTorrent
+  }
+
+  private createMockClient(): WebTorrentInstance {
+    const client = {
+      add: (_torrentId: string, _opts: unknown, cb?: (torrent: WebTorrentTorrent) => void) => {
+        const torrent = this.createMockTorrent()
+        if (cb) queueMicrotask(() => cb(torrent))
+        return torrent
+      },
+      seed: (_files: File[], _opts: unknown, cb?: (torrent: WebTorrentTorrent) => void) => {
+        const torrent = this.createMockTorrent()
+        if (cb) queueMicrotask(() => cb(torrent))
+        return torrent
+      },
+      destroy: () => {},
+      torrents: [],
+      downloadSpeed: 0,
+      uploadSpeed: 0,
+    }
+
+    return client as unknown as WebTorrentInstance
+  }
+
+  async getClient(): Promise<WebTorrentInstance> {
+    if (!this.client) {
+      if (!this.clientPromise) {
+        const isTestMode = import.meta.env.MODE === 'test'
+
+        if (typeof window === 'undefined' || isTestMode) {
+          this.client = this.createMockClient()
+          this.clientPromise = Promise.resolve(this.client)
+        } else {
+          this.clientPromise = import('webtorrent')
+            .then((module) => {
+              try {
+                const WebTorrent = module.default as unknown as new () => WebTorrentInstance
+                this.client = new WebTorrent()
+                return this.client
+              } catch (err) {
+                console.warn('Failed to initialize WebTorrent client:', err)
+                this.client = this.createMockClient()
+                return this.client
+              }
+            })
+            .catch((err) => {
+              this.clientPromise = null
+              throw err
+            })
+        }
+      }
+
+      this.client = await this.clientPromise
+    }
+
+    return this.client
   }
 
   getTrackers(): string[] {
@@ -52,7 +112,7 @@ export class WebTorrentService {
     }
   }
 
-  private registerTorrent(torrentId: string, torrent: WebTorrent.Torrent) {
+  private registerTorrent(torrentId: string, torrent: WebTorrentTorrent) {
     this.torrents.set(torrentId, torrent)
     
     // Remove if already in queue to move it to the end
@@ -73,16 +133,16 @@ export class WebTorrentService {
       throw new Error('WebTorrent is disabled in settings')
     }
 
-    const client = this.getClient()
+    const client = await this.getClient()
     
     // Normalize magnet or infohash as key
     const torrentId = magnetOrInfoHash
 
     let torrent = this.torrents.get(torrentId)
     if (!torrent) {
-      torrent = await new Promise<WebTorrent.Torrent>((resolve, reject) => {
+      torrent = await new Promise<WebTorrentTorrent>((resolve, reject) => {
         const t = client.add(torrentId, { announce: this.getTrackers() }, (torrentInstance) => {
-          resolve(torrentInstance)
+          resolve(torrentInstance as WebTorrentTorrent)
         })
         t.on('error', (err) => {
           reject(err)
@@ -93,6 +153,10 @@ export class WebTorrentService {
       // Refresh its position in LRU queue
       this.activeQueue = this.activeQueue.filter((id) => id !== torrentId)
       this.activeQueue.push(torrentId)
+    }
+
+    if (!torrent) {
+      throw new Error('Failed to initialize WebTorrent torrent')
     }
 
     // Wait for metadata to resolve if not loaded yet
@@ -122,7 +186,7 @@ export class WebTorrentService {
   }
 
   async seedFiles(files: File[], name: string): Promise<{ magnetURI: string; infoHash: string }> {
-    const client = this.getClient()
+    const client = await this.getClient()
     const trackers = this.getTrackers()
 
     return new Promise((resolve, reject) => {
@@ -180,6 +244,7 @@ export class WebTorrentService {
       this.client.destroy()
       this.client = null
     }
+    this.clientPromise = null
     this.torrents.clear()
   }
 

@@ -38,6 +38,7 @@ describe('uploadFileToServers', () => {
     await expect(resultPromise).resolves.toEqual({
       hash: 'hash',
       servers: ['https://a.example', 'https://b.example'],
+      missingServers: [],
     })
     expect(setCachedHash).toHaveBeenCalledTimes(2)
   })

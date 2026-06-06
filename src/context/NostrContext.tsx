@@ -17,7 +17,6 @@ import { useAuthStore, type AuthMethod } from '@/stores/authStore'
 import { DEFAULT_RELAYS, useRelayStore } from '@/stores/relayStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { useLibraryStore } from '@/stores/libraryStore'
-import { decryptFromSelf, decodeLibraryList } from '@/lib/nip51'
 import type { Nip44Signer } from '@/lib/nip51'
 import { useComicStore } from '@/stores/comicStore'
 import type { Subscription } from 'rxjs'
@@ -252,6 +251,7 @@ export function NostrProvider({ children }: PropsWithChildren) {
 
     const librarySub = service.subscribeToLibraryList(pubkey, async (event) => {
       try {
+        const { decryptFromSelf, decodeLibraryList } = await import('@/lib/nip51')
         const windowNostr = typeof window !== 'undefined'
           ? (window as unknown as { nostr?: Nip44Signer }).nostr
           : undefined

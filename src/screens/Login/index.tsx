@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
+import type { SerializedAccount } from 'applesauce-accounts'
+import type {
   ExtensionAccount,
   NostrConnectAccount,
   PrivateKeyAccount,
+  NostrConnectAccountSignerData,
 } from 'applesauce-accounts/accounts'
-import type { SerializedAccount } from 'applesauce-accounts'
-import type { NostrConnectAccountSignerData } from 'applesauce-accounts/accounts'
-import { NostrConnectSigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
 import { BrandMark } from '@/components/BrandMark'
 import { useAuthStore } from '@/stores/authStore'
@@ -30,6 +29,7 @@ async function commitLogin(
     method: 'extension' | 'nsec' | 'bunker' | 'qr',
     account?: SerializedAccount<NostrConnectAccountSignerData> | null,
   ) => void,
+  accountData: SerializedAccount<NostrConnectAccountSignerData> | null = null,
 ) {
   const existing = service.accountManager.getAccountForPubkey(account.pubkey)
   const active = existing ?? account
@@ -40,7 +40,7 @@ async function commitLogin(
   setAuth(
     active.pubkey,
     method,
-    account instanceof NostrConnectAccount ? account.toJSON() : null,
+    accountData,
   )
 }
 
@@ -62,6 +62,7 @@ export function LoginScreen() {
       if (!hasNostrExtension()) {
         throw new Error('No extension detected. Install Alby or nos2x.')
       }
+      const { ExtensionAccount } = await import('applesauce-accounts/accounts')
       const account = await ExtensionAccount.fromExtension()
       await commitLogin(account, 'extension', service, setAuth)
       navigate('/')
@@ -77,6 +78,7 @@ export function LoginScreen() {
     setLoading(true)
     try {
       const value = nsecValue.trim()
+      const { PrivateKeyAccount } = await import('applesauce-accounts/accounts')
       const account = PrivateKeyAccount.fromKey(value)
       sessionStorage.setItem(NSEC_SESSION_KEY, value)
       setNsecValue('')
@@ -93,12 +95,16 @@ export function LoginScreen() {
     setError(null)
     setLoading(true)
     try {
+      const [{ NostrConnectSigner }, { NostrConnectAccount }] = await Promise.all([
+        import('applesauce-signers'),
+        import('applesauce-accounts/accounts'),
+      ])
       const signer = await NostrConnectSigner.fromBunkerURI(bunkerValue.trim(), {
         permissions: NostrConnectSigner.buildSigningPermissions([0, 1, 3]),
       })
       const pubkey = await signer.getPublicKey()
       const account = new NostrConnectAccount(pubkey, signer)
-      await commitLogin(account, 'bunker', service, setAuth)
+      await commitLogin(account, 'bunker', service, setAuth, account.toJSON())
       navigate('/')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Bunker connection failed.')

@@ -7,6 +7,7 @@ import { useLibraryStore } from '../stores/libraryStore'
 import { usePublishQueueStore } from '../stores/publishQueueStore'
 
 const mockPublishEvent = vi.fn(async () => undefined)
+const mockRefreshSync = vi.fn()
 const mockForeignComicEvent = {
   id: 'foreign-ev',
   pubkey: 'author-pubkey',
@@ -61,7 +62,7 @@ vi.mock('applesauce-react/hooks', () => ({
 }))
 
 vi.mock('../context/NostrContext', () => ({
-  useNostr: () => ({ service: mockService, refreshSync: vi.fn(), isRefreshing: false, syncGeneration: 0 }),
+  useNostr: () => ({ service: mockService, refreshSync: mockRefreshSync, isRefreshing: false, syncGeneration: 0 }),
 }))
 
 vi.mock('../stores/authStore', () => ({
@@ -115,6 +116,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 describe('LibraryScreen queued publishes', () => {
   beforeEach(() => {
     mockPublishEvent.mockClear()
+    mockRefreshSync.mockClear()
     mockService.subscribeToForeignComic.mockClear()
     usePublishQueueStore.getState().clearDrafts()
     useLibraryStore.getState().setAll([])
@@ -218,6 +220,21 @@ describe('LibraryScreen queued publishes', () => {
       'foreign-comic',
       expect.any(Function),
     )
+  })
+
+  it('renders a refresh action in the header', () => {
+    render(<LibraryScreen />, { wrapper: Wrapper })
+
+    expect(screen.getByRole('button', { name: /refresh relays/i })).toBeInTheDocument()
+  })
+
+  it('refreshes relays from the header action', async () => {
+    const user = userEvent.setup()
+    render(<LibraryScreen />, { wrapper: Wrapper })
+
+    await user.click(screen.getByRole('button', { name: /refresh relays/i }))
+
+    expect(mockRefreshSync).toHaveBeenCalledOnce()
   })
 
   it('renders saved comic title and cover from the event store on a fresh device', () => {

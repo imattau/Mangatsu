@@ -9,6 +9,7 @@ export default defineConfig({
     tailwindcss(),
     react(),
     nodePolyfills({
+      exclude: ['vm'],
       globals: {
         Buffer: true,
         global: true,

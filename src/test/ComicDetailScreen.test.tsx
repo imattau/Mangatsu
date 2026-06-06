@@ -96,12 +96,34 @@ const mockRemoveChapter = vi.fn()
 let mockSavedATags = ['30040:abc:one-piece']
 const mockRemoveFromLibrary = vi.fn()
 const mockRemoveProgressForChapter = vi.fn()
+const mockEventStore = {
+  timeline: vi.fn(() => ({ subscribe: vi.fn() })),
+  getEvent: vi.fn(() => mockComicEvent),
+}
+const mockComicStoreState = {
+  comics: { 'one-piece': mockComic } as Record<string, Comic>,
+  chapters: Object.fromEntries(mockChapters.map((chapter) => [chapter.dTag, chapter])) as Record<string, Chapter>,
+  deletedChapterDTags: new Set<string>(),
+  setComic: mockSetComic,
+  setChapter: vi.fn(),
+  removeComic: vi.fn(),
+  removeChapter: mockRemoveChapter,
+  removeChaptersForComic: vi.fn(),
+  chaptersForComic: mockChaptersForComic,
+}
+const mockBlossomStoreState = {
+  servers: [] as { url: string }[],
+  primaryServer: () => 'https://blossom.example',
+  cachedHashes: {} as Record<string, string>,
+}
+
+function setMockChapters(chapters: Chapter[]) {
+  mockChapters = chapters
+  mockComicStoreState.chapters = Object.fromEntries(chapters.map((chapter) => [chapter.dTag, chapter]))
+}
 
 vi.mock('applesauce-react/hooks', () => ({
-  useEventStore: () => ({
-    timeline: vi.fn(() => ({ subscribe: vi.fn() })),
-    getEvent: vi.fn(() => mockComicEvent),
-  }),
+  useEventStore: () => mockEventStore,
   useObservableState: () => [],
 }))
 
@@ -137,17 +159,9 @@ vi.mock('../stores/comicStore', () => ({
       removeChapter: (chapterDTag: string) => void
       removeChaptersForComic: (comicDTag: string) => void
       chaptersForComic: (dTag: string) => Chapter[]
+      deletedChapterDTags: Set<string>
   }) => unknown) =>
-    sel({
-      comics: { 'one-piece': mockComic },
-      chapters: {},
-      setComic: mockSetComic,
-      setChapter: vi.fn(),
-      removeComic: vi.fn(),
-      removeChapter: mockRemoveChapter,
-      removeChaptersForComic: vi.fn(),
-      chaptersForComic: mockChaptersForComic,
-    }),
+    sel(mockComicStoreState),
 }))
 
 vi.mock('../stores/libraryStore', () => ({
@@ -188,7 +202,7 @@ vi.mock('../stores/blossomStore', () => ({
       primaryServer: () => string | undefined
       cachedHashes: Record<string, string>
     }) => unknown,
-  ) => sel({ servers: [], primaryServer: () => 'https://blossom.example', cachedHashes: {} }),
+  ) => sel(mockBlossomStoreState),
 }))
 
 function Wrapper({ children }: { children: React.ReactNode }) {
@@ -215,6 +229,11 @@ describe('ComicDetailScreen', () => {
     mockAreTargetsCached.mockClear()
     mockCacheTargetsForOffline.mockClear()
     mockRemoveTargetsFromOfflineCache.mockClear()
+    setMockChapters([mockChapter1, mockChapter2])
+    mockProgress = {}
+    mockComicStoreState.deletedChapterDTags = new Set()
+    mockEventStore.timeline.mockClear()
+    mockEventStore.getEvent.mockClear()
 
     class MockImage {
       onload: null | (() => void) = null
@@ -237,14 +256,14 @@ describe('ComicDetailScreen', () => {
   })
 
   it('renders the comic title', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
     expect(screen.getByText('One Piece')).toBeInTheDocument()
   })
 
   it('renders chapter titles', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
     expect(screen.getByText('Romance Dawn')).toBeInTheDocument()
@@ -252,7 +271,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('renders page count for each chapter', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
     expect(screen.getByText('3 pages')).toBeInTheDocument()
@@ -260,7 +279,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('renders chapter links pointing to reader route', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
     const links = screen.getAllByRole('link')
@@ -274,7 +293,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('shows an edit details action for the comic owner', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
@@ -285,7 +304,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('renders clickable metadata tags that open a filtered feed', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
@@ -294,14 +313,14 @@ describe('ComicDetailScreen', () => {
   })
 
   it('shows empty state when no chapters', () => {
-    mockChapters = []
+    setMockChapters([])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
     expect(screen.getByText(/no chapters yet/i)).toBeInTheDocument()
   })
 
   it('shows Continue badge when reading progress exists for a chapter', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {
       'one-piece/chapter-1': {
         id: 'p1',
@@ -315,7 +334,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('shows a delete action for owned comics and publishes a delete request', async () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     const user = userEvent.setup()
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -352,7 +371,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('hydrates the shared comic store when detail resolves a comic', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
@@ -365,7 +384,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('shows an add chapter action for owned comics', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
@@ -376,7 +395,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('shows chapter edit and delete actions for owned comics', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
@@ -388,16 +407,16 @@ describe('ComicDetailScreen', () => {
   })
 
   it('renders the comments section after the chapter list', () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
-    expect(screen.getByText(/comments/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Comments$/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /post comment/i })).toBeInTheDocument()
   })
 
   it('deletes a chapter and removes local progress state', async () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {
       'one-piece/chapter-1': {
         id: 'p1',
@@ -434,7 +453,7 @@ describe('ComicDetailScreen', () => {
   })
 
   it('can cache a comic for offline reading', async () => {
-    mockChapters = [mockChapter1, mockChapter2]
+    setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     const user = userEvent.setup()
 
@@ -470,7 +489,7 @@ describe('ComicDetailScreen', () => {
 
   it('lists blossom servers in the detail view', () => {
     mockComic.coverServers = ['https://good.example', 'https://bad.example']
-    mockChapters = [
+    setMockChapters([
       {
         ...mockChapter1,
         pageServers: ['https://good.example', 'https://bad.example', 'https://good.example'],
@@ -490,7 +509,7 @@ describe('ComicDetailScreen', () => {
         ],
         blossomServer: 'https://good.example',
       },
-    ]
+    ])
     mockProgress = {}
 
     class MockImage {
