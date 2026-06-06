@@ -88,4 +88,40 @@ describe('ZoomableReaderSurface', () => {
       expect(content.style.transform).toBe('translate3d(0px, 0px, 0) scale(1)')
     })
   })
+
+  it('zooms around the local touch point instead of the window origin', async () => {
+    const { container } = render(
+      <ZoomableReaderSurface>
+        <img alt="Page 1" />
+      </ZoomableReaderSurface>,
+    )
+    const wrapper = container.firstElementChild as HTMLElement
+    const content = wrapper.firstElementChild as HTMLElement
+
+    Object.defineProperty(wrapper, 'getBoundingClientRect', {
+      value: vi.fn(() => ({
+        width: 400,
+        height: 600,
+        top: 80,
+        left: 50,
+        right: 450,
+        bottom: 680,
+        x: 50,
+        y: 80,
+        toJSON: () => ({}),
+      })),
+      configurable: true,
+    })
+    Object.defineProperty(content, 'scrollWidth', { value: 1200, configurable: true })
+    Object.defineProperty(content, 'scrollHeight', { value: 1800, configurable: true })
+
+    fireEvent.pointerDown(wrapper, { pointerId: 1, pointerType: 'touch', clientX: 150, clientY: 180 })
+    fireEvent.pointerDown(wrapper, { pointerId: 2, pointerType: 'touch', clientX: 350, clientY: 480 })
+    fireEvent.pointerMove(wrapper, { pointerId: 2, pointerType: 'touch', clientX: 370, clientY: 510 })
+
+    await waitFor(() => {
+      expect(content.style.transform).toContain('scale(')
+      expect(content.style.transform).toContain('translate3d(-')
+    })
+  })
 })

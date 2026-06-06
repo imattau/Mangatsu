@@ -118,8 +118,19 @@ export function ZoomableReaderSurface({ children, className, resetKey }: Zoomabl
       return {
         width: viewport.width,
         height: viewport.height,
+        left: viewport.left,
+        top: viewport.top,
         contentWidth: content.scrollWidth,
         contentHeight: content.scrollHeight,
+      }
+    }
+
+    function getLocalPoint(event: React.PointerEvent<HTMLDivElement>): Point | null {
+      const bounds = viewportRef.current?.getBoundingClientRect()
+      if (!bounds) return null
+      return {
+        x: event.clientX - bounds.left,
+        y: event.clientY - bounds.top,
       }
     }
 
@@ -195,7 +206,8 @@ export function ZoomableReaderSurface({ children, className, resetKey }: Zoomabl
     function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
       if (event.pointerType !== 'touch') return
 
-      const point = { x: event.clientX, y: event.clientY }
+      const point = getLocalPoint(event)
+      if (!point) return
       pointersRef.current.set(event.pointerId, point)
       event.currentTarget.setPointerCapture(event.pointerId)
 
@@ -216,7 +228,8 @@ export function ZoomableReaderSurface({ children, className, resetKey }: Zoomabl
     function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
       if (event.pointerType !== 'touch') return
 
-      const point = { x: event.clientX, y: event.clientY }
+      const point = getLocalPoint(event)
+      if (!point) return
       if (!pointersRef.current.has(event.pointerId)) return
       pointersRef.current.set(event.pointerId, point)
 
@@ -276,7 +289,8 @@ export function ZoomableReaderSurface({ children, className, resetKey }: Zoomabl
 
     function onPointerUpOrCancel(event: React.PointerEvent<HTMLDivElement>) {
       if (event.pointerType !== 'touch') return
-      const point = { x: event.clientX, y: event.clientY }
+      const point = getLocalPoint(event)
+      if (!point) return
       const duration = performance.now() - gestureRef.current.startTime
       const tapCandidate =
         !gestureRef.current.moved &&
