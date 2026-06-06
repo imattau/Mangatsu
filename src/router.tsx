@@ -3,11 +3,11 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AppLayout } from '@/components/AppLayout'
 import { useAuthStore } from '@/stores/authStore'
+import { ReaderScreen } from '@/screens/Reader'
 
 const LoginScreen = lazy(() => import('@/screens/Login').then((module) => ({ default: module.LoginScreen })))
 const LibraryScreen = lazy(() => import('@/screens/Library').then((module) => ({ default: module.LibraryScreen })))
 const ComicDetailScreen = lazy(() => import('@/screens/ComicDetail').then((module) => ({ default: module.ComicDetailScreen })))
-const ReaderScreen = lazy(() => import('@/screens/Reader').then((module) => ({ default: module.ReaderScreen })))
 const UploadScreen = lazy(() => import('@/screens/Upload').then((module) => ({ default: module.UploadScreen })))
 const SettingsScreen = lazy(() => import('@/screens/Settings').then((module) => ({ default: module.SettingsScreen })))
 const FeedScreen = lazy(() => import('@/screens/Feed').then((module) => ({ default: module.FeedScreen })))

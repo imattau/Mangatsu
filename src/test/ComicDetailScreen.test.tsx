@@ -403,16 +403,22 @@ describe('ComicDetailScreen', () => {
     )
   })
 
-  it('shows chapter edit and delete actions for owned comics', () => {
+  it('shows chapter edit and delete actions for owned comics', async () => {
     setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
+    const user = userEvent.setup()
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
-    expect(screen.getByRole('link', { name: /edit chapter romance dawn/i })).toHaveAttribute(
+    expect(screen.queryByRole('link', { name: /edit chapter romance dawn/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /delete chapter romance dawn/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /open chapter actions for romance dawn/i }))
+
+    expect(screen.getByRole('menuitem', { name: /edit chapter/i })).toHaveAttribute(
       'href',
       '/comic/one-piece/chapter/one-piece%2Fchapter-1/edit',
     )
-    expect(screen.getByRole('button', { name: /delete chapter romance dawn/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /delete chapter/i })).toBeInTheDocument()
   })
 
   it('renders the comments section after the chapter list', () => {
@@ -440,7 +446,8 @@ describe('ComicDetailScreen', () => {
     try {
       render(<ComicDetailScreen />, { wrapper: Wrapper })
 
-      await user.click(screen.getByRole('button', { name: /delete chapter romance dawn/i }))
+      await user.click(screen.getByRole('button', { name: /open chapter actions for romance dawn/i }))
+      await user.click(screen.getByRole('menuitem', { name: /delete chapter/i }))
 
       expect(mockEventFactoryBuild).toHaveBeenCalledWith(
         expect.objectContaining({

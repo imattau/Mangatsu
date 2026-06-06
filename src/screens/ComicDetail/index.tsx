@@ -206,6 +206,7 @@ export function ComicDetailScreen() {
   const [deletingChapterDTag, setDeletingChapterDTag] = useState('')
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
   const actionsMenuRef = useRef<HTMLDivElement>(null)
+  const [activeChapterMenuDTag, setActiveChapterMenuDTag] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -302,6 +303,31 @@ export function ComicDetailScreen() {
       document.removeEventListener('keydown', handleEscape)
     }
   }, [])
+
+  useEffect(() => {
+    if (!activeChapterMenuDTag) return
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node
+      const menu = document.querySelector(`[data-chapter-actions="${activeChapterMenuDTag}"]`)
+      if (menu && !menu.contains(target)) {
+        setActiveChapterMenuDTag('')
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setActiveChapterMenuDTag('')
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [activeChapterMenuDTag])
 
   async function handleOfflineToggle() {
     if (!comic || offlineTargets.length === 0) {
@@ -475,6 +501,19 @@ export function ComicDetailScreen() {
   function handleOfflineToggleFromMenu() {
     closeActionsMenu()
     void handleOfflineToggle()
+  }
+
+  function toggleChapterActionsMenu(chapterDTag: string) {
+    setActiveChapterMenuDTag((current) => (current === chapterDTag ? '' : chapterDTag))
+  }
+
+  function closeChapterActionsMenu() {
+    setActiveChapterMenuDTag('')
+  }
+
+  function handleDeleteChapterFromMenu(chapter: Chapter) {
+    closeChapterActionsMenu()
+    void handleDeleteChapter(chapter)
   }
 
   return (
@@ -703,25 +742,49 @@ export function ComicDetailScreen() {
                         </div>
                       </Link>
                       {canEditOrDelete && (
-                        <div className="flex flex-shrink-0 items-center gap-2">
-                          <Link
-                            to={`/comic/${dTag}/chapter/${encodeURIComponent(chapter.dTag)}/edit`}
-                            aria-label={`Edit chapter ${chapter.title}`}
-                            className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
-                          >
-                            <PencilIcon />
-                            <span className="hidden sm:inline">Edit</span>
-                          </Link>
+                        <div className="relative flex flex-shrink-0 items-center">
                           <button
                             type="button"
-                            disabled={deleting}
-                            onClick={() => void handleDeleteChapter(chapter)}
-                            aria-label={`Delete chapter ${chapter.title}`}
-                            className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300 transition hover:border-red-700 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
+                            onClick={() => toggleChapterActionsMenu(chapter.dTag)}
+                            aria-label={
+                              activeChapterMenuDTag === chapter.dTag
+                                ? `Close chapter actions for ${chapter.title}`
+                                : `Open chapter actions for ${chapter.title}`
+                            }
+                            aria-expanded={activeChapterMenuDTag === chapter.dTag}
+                            aria-haspopup="menu"
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 transition hover:border-zinc-500 hover:text-white"
                           >
-                            <TrashIcon />
-                            <span className="hidden sm:inline">{deleting ? 'Deleting…' : 'Delete'}</span>
+                            <HamburgerIcon open={activeChapterMenuDTag === chapter.dTag} />
                           </button>
+                          {activeChapterMenuDTag === chapter.dTag && (
+                            <div
+                              role="menu"
+                              aria-label={`Chapter actions for ${chapter.title}`}
+                              data-chapter-actions={chapter.dTag}
+                              className="absolute right-0 top-full z-20 mt-2 w-48 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl shadow-black/40"
+                            >
+                              <Link
+                                to={`/comic/${dTag}/chapter/${encodeURIComponent(chapter.dTag)}/edit`}
+                                role="menuitem"
+                                onClick={closeChapterActionsMenu}
+                                className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
+                              >
+                                <PencilIcon />
+                                Edit chapter
+                              </Link>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                disabled={deleting}
+                                onClick={() => handleDeleteChapterFromMenu(chapter)}
+                                className="flex w-full items-center gap-2 px-4 py-3 text-sm text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <TrashIcon />
+                                {deleting ? 'Deleting…' : 'Delete chapter'}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
