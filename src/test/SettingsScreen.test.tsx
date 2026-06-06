@@ -17,6 +17,11 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 let mockPubkey: string | null = 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
 const mockClearAuth = vi.fn()
+const mockFetchProfile = vi.fn(async () => ({
+  name: 'Ada Lovelace',
+  display_name: 'Countess Ada',
+  picture: 'https://example.com/avatar.jpg',
+}))
 
 vi.mock('../stores/authStore', () => ({
   useAuthStore: (sel: (s: { pubkey: string | null; clearAuth: () => void }) => unknown) =>
@@ -42,7 +47,13 @@ vi.mock('../stores/blossomStore', () => ({
 const mockPublishBlossomServerList = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('../context/NostrContext', () => ({
-  useNostr: () => ({ service: { publishBlossomServerList: mockPublishBlossomServerList } }),
+  useNostr: () => ({
+    service: {
+      publishBlossomServerList: mockPublishBlossomServerList,
+      fetchProfile: mockFetchProfile,
+    },
+    syncGeneration: 0,
+  }),
 }))
 
 let mockNwcConnectionString: string | null = null
@@ -93,6 +104,7 @@ describe('SettingsScreen', () => {
     mockSetServers.mockClear()
     mockNavigate.mockClear()
     mockPublishBlossomServerList.mockClear()
+    mockFetchProfile.mockClear()
     mockSetConnectionString.mockClear()
     mockShowNsfw = false
     mockSetShowNsfw.mockClear()
@@ -106,6 +118,16 @@ describe('SettingsScreen', () => {
     expect(el.textContent).toContain('67890')
     // should not show full key
     expect(el.textContent).not.toBe(mockPubkey)
+  })
+
+  it('renders account profile avatar and username when available', async () => {
+    render(<SettingsScreen />, { wrapper: Wrapper })
+
+    expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /ada lovelace avatar/i })).toHaveAttribute(
+      'src',
+      'https://example.com/avatar.jpg',
+    )
   })
 
   it('sign out clears auth and navigates to /login', () => {
@@ -155,7 +177,7 @@ describe('SettingsScreen', () => {
     expect(screen.getByText(/using public defaults/i)).toBeInTheDocument()
   })
 
-  it('renders NWC section', () => {
+  it('renders wallet controls inside the account section', () => {
     render(<SettingsScreen />, { wrapper: Wrapper })
     expect(screen.getByTestId('nwc-section')).toBeInTheDocument()
     expect(screen.getByText(/Wallet \(NWC\)/i)).toBeInTheDocument()

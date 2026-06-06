@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '@/components/BrandMark'
 import { useAuthStore } from '@/stores/authStore'
@@ -8,11 +8,15 @@ import { useNostr } from '@/context/NostrContext'
 import { useNwcStore } from '@/stores/nwcStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { webTorrentService } from '@/services/WebTorrentService'
-import { useEffect } from 'react'
 
 function truncatePubkey(pubkey: string) {
   if (pubkey.length <= 16) return pubkey
   return `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`
+}
+
+interface AccountProfile {
+  name: string | null
+  picture: string | null
 }
 
 const BackIcon = () => (
@@ -37,7 +41,7 @@ export function SettingsScreen() {
   const setServers = useBlossomStore((state) => state.setServers)
   const activeRelays = useRelayStore((state) => state.activeRelays)
   const userRelays = useRelayStore((state) => state.relays)
-  const { service } = useNostr()
+  const { service, syncGeneration } = useNostr()
   const nwcConnectionString = useNwcStore((s) => s.connectionString)
   const setConnectionString = useNwcStore((s) => s.setConnectionString)
   const showNsfw = useSettingsStore((s) => s.showNsfw)
@@ -49,6 +53,7 @@ export function SettingsScreen() {
   const [isBlossomOpen, setIsBlossomOpen] = useState(false)
   const [isRelaysOpen, setIsRelaysOpen] = useState(false)
   const [isWebTorrentOpen, setIsWebTorrentOpen] = useState(false)
+  const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null)
   
   const [stats, setStats] = useState(() => webTorrentService.getStats())
 
@@ -61,6 +66,42 @@ export function SettingsScreen() {
 
     return () => clearInterval(interval)
   }, [enableWebTorrent])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadProfile() {
+      if (!pubkey) {
+        setAccountProfile(null)
+        return
+      }
+
+      try {
+        const profile = await service.fetchProfile(pubkey)
+        if (cancelled) return
+
+        setAccountProfile(
+          profile
+            ? {
+                name: profile.name?.trim() || profile.display_name?.trim() || null,
+                picture: profile.picture?.trim() || null,
+              }
+            : null,
+        )
+      } catch {
+        if (!cancelled) {
+          setAccountProfile(null)
+        }
+      }
+    }
+
+    void loadProfile()
+
+    return () => {
+      cancelled = true
+    }
+  }, [pubkey, service, syncGeneration])
+
   const displayRelays = activeRelays()
   const usingDefaultRelays = userRelays.length === 0
 
@@ -108,23 +149,97 @@ export function SettingsScreen() {
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
           <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">Account</p>
           {pubkey ? (
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-xs text-zinc-500">Public key</p>
-                <p className="mt-1 font-mono text-sm text-zinc-100" data-testid="pubkey">
-                  {truncatePubkey(pubkey)}
-                </p>
+            <div className="space-y-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  {accountProfile?.picture ? (
+                    <img
+                      src={accountProfile.picture}
+                      alt={accountProfile.name ? `${accountProfile.name} avatar` : 'Account avatar'}
+                      className="h-14 w-14 flex-shrink-0 rounded-2xl border border-zinc-800 object-cover bg-zinc-900"
+                    />
+                  ) : (
+                    <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900 text-sm font-medium text-zinc-500">
+                      {truncatePubkey(pubkey).slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-xs text-zinc-500">Account</p>
+                    <p className="mt-1 truncate text-sm font-medium text-zinc-100">
+                      {accountProfile?.name || truncatePubkey(pubkey)}
+                    </p>
+                    <p className="mt-1 font-mono text-xs text-zinc-500" data-testid="pubkey">
+                      {truncatePubkey(pubkey)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-red-800 hover:text-red-400"
+                  >
+                    Sign out
+                  </button>
               </div>
-              <button
-                onClick={handleSignOut}
-                className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-red-800 hover:text-red-400"
-              >
-                Sign out
-              </button>
+              <div className="space-y-2" data-testid="nwc-section">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Wallet (NWC)</p>
+                  <p className="mt-1 text-xs text-zinc-600">
+                    Nostr Wallet Connect — connect a Lightning wallet to enable zapping
+                  </p>
+                </div>
+                {nwcConnectionString ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="truncate font-mono text-xs text-zinc-400">
+                      {nwcConnectionString.slice(0, 40)}…
+                    </p>
+                    <button
+                      onClick={() => setConnectionString(null)}
+                      className="self-start rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-red-800 hover:text-red-400 sm:self-auto"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      type="text"
+                      value={nwcInput}
+                      onChange={(e) => setNwcInput(e.target.value)}
+                      placeholder="nostr+walletconnect://..."
+                      data-testid="nwc-input"
+                      className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
+                    />
+                    <button
+                      onClick={() => { if (nwcInput.trim()) { setConnectionString(nwcInput.trim()); setNwcInput('') } }}
+                      className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                    >
+                      Save
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <p className="text-sm text-zinc-500">Not signed in</p>
           )}
+        </section>
+
+        {/* Content */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
+          <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">Content</p>
+          <label className="flex cursor-pointer items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-zinc-100">Show NSFW content</p>
+              <p className="mt-0.5 text-xs text-zinc-500">Display covers marked with a content warning</p>
+            </div>
+            <input
+              type="checkbox"
+              aria-label="Show NSFW content"
+              checked={showNsfw}
+              onChange={(e) => setShowNsfw(e.target.checked)}
+              className="accent-zinc-400 h-4 w-4"
+            />
+          </label>
         </section>
 
         {/* Blossom Servers */}
@@ -253,61 +368,6 @@ export function SettingsScreen() {
             </ul>
           </div>
         </section>
-        {/* Wallet (NWC) */}
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5" data-testid="nwc-section">
-          <p className="mb-1 text-xs uppercase tracking-[0.35em] text-zinc-500">Wallet (NWC)</p>
-          <p className="mb-4 text-xs text-zinc-600">
-            Nostr Wallet Connect — connect a Lightning wallet to enable zapping
-          </p>
-          {nwcConnectionString ? (
-            <div className="flex items-center justify-between gap-4">
-              <p className="truncate font-mono text-xs text-zinc-400">
-                {nwcConnectionString.slice(0, 40)}…
-              </p>
-              <button
-                onClick={() => setConnectionString(null)}
-                className="flex-shrink-0 rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-red-800 hover:text-red-400"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={nwcInput}
-                onChange={(e) => setNwcInput(e.target.value)}
-                placeholder="nostr+walletconnect://..."
-                data-testid="nwc-input"
-                className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
-              />
-              <button
-                onClick={() => { if (nwcInput.trim()) { setConnectionString(nwcInput.trim()); setNwcInput('') } }}
-                className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-              >
-                Save
-              </button>
-            </div>
-          )}
-        </section>
-        {/* Content */}
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
-          <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">Content</p>
-          <label className="flex cursor-pointer items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-zinc-100">Show NSFW content</p>
-              <p className="mt-0.5 text-xs text-zinc-500">Display covers marked with a content warning</p>
-            </div>
-            <input
-              type="checkbox"
-              aria-label="Show NSFW content"
-              checked={showNsfw}
-              onChange={(e) => setShowNsfw(e.target.checked)}
-              className="accent-zinc-400 h-4 w-4"
-            />
-          </label>
-        </section>
-
         {/* WebTorrent */}
         <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
           <button
