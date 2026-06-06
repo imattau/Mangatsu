@@ -10,6 +10,7 @@ export interface Comic {
   blossomServer: string
   coverServer?: string
   coverServers?: string[]
+  coverTorrent?: string
   tags: string[]
   nsfw: boolean
   eventId: string
@@ -25,6 +26,7 @@ export interface Chapter {
   blossomServer: string
   pageServers?: string[]
   pageServerLists?: string[][]
+  pageTorrents?: string[]
   publishedAt: number
   eventId: string
   torrent?: string

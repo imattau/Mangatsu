@@ -14,6 +14,11 @@ const mockChapter1: Chapter = {
   title: 'Romance Dawn',
   pageHashes: ['hash1', 'hash2', 'hash3'],
   blossomServer: 'https://blossom.example',
+  pageTorrents: [
+    'magnet:?xt=urn:btih:hash1',
+    'magnet:?xt=urn:btih:hash2',
+    'magnet:?xt=urn:btih:hash3',
+  ],
   publishedAt: 1700000000,
   eventId: 'ch1',
 }
@@ -60,6 +65,17 @@ let mockPublishFn = vi.fn()
 let mockActiveAccount: { signer: { signEvent: ReturnType<typeof vi.fn> } } | null = {
   signer: { signEvent: mockSignFn },
 }
+const mockBlossomImage = vi.fn(
+  ({ hash, torrent, alt }: { hash: string; torrent?: string; alt: string }) => (
+    <img
+      data-testid="blossom-image"
+      data-hash={hash}
+      data-torrent={torrent ?? ''}
+      alt={alt}
+      src={`https://blossom.example/${hash}`}
+    />
+  ),
+)
 
 vi.mock('../stores/comicStore', () => ({
   useComicStore: (sel: (s: {
@@ -115,6 +131,10 @@ vi.mock('../context/NostrContext', () => ({
   }),
 }))
 
+vi.mock('../components/BlossomImage', () => ({
+  BlossomImage: (props: { hash: string; torrent?: string; alt: string }) => mockBlossomImage(props),
+}))
+
 // ── Render helper ────────────────────────────────────────────────────────────
 
 function renderReader(dTag = 'one-piece', chapterId = encodeURIComponent('one-piece/chapter-1')) {
@@ -159,6 +179,7 @@ describe('ReaderScreen — page rendering', () => {
     mockCachedHashes = {}
     mockBuildFn.mockClear()
     mockPublishFn.mockClear()
+    mockBlossomImage.mockClear()
 
     class MockImage {
       onload: null | (() => void) = null
@@ -196,9 +217,37 @@ describe('ReaderScreen — page rendering', () => {
     renderReader()
     await waitFor(() => {
       const images = screen.getAllByRole('img')
-      expect(images[0]).toHaveAttribute('src', 'https://blossom.example/hash1')
-      expect(images[1]).toHaveAttribute('src', 'https://blossom.example/hash2')
-      expect(images[2]).toHaveAttribute('src', 'https://blossom.example/hash3')
+      expect(images[0]).toHaveAttribute('alt', 'Page 1')
+      expect(images[1]).toHaveAttribute('alt', 'Page 2')
+      expect(images[2]).toHaveAttribute('alt', 'Page 3')
+    })
+  })
+
+  it('passes per-page torrent URIs to BlossomImage', async () => {
+    renderReader()
+
+    await waitFor(() => {
+      expect(mockBlossomImage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hash: 'hash1',
+          torrent: 'magnet:?xt=urn:btih:hash1',
+          alt: 'Page 1',
+        }),
+      )
+      expect(mockBlossomImage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hash: 'hash2',
+          torrent: 'magnet:?xt=urn:btih:hash2',
+          alt: 'Page 2',
+        }),
+      )
+      expect(mockBlossomImage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hash: 'hash3',
+          torrent: 'magnet:?xt=urn:btih:hash3',
+          alt: 'Page 3',
+        }),
+      )
     })
   })
 

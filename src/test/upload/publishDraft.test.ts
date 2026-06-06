@@ -40,10 +40,10 @@ describe('publishDraft', () => {
         firstPageObjectUrl: null,
       },
       pageUploads: [
-        { hash: 'hash1', servers: ['https://blossom-a.example', 'https://blossom-b.example'] },
-        { hash: 'hash2', servers: ['https://blossom-a.example'] },
+        { hash: 'hash1', servers: ['https://blossom-a.example', 'https://blossom-b.example'], torrentURI: 'magnet:?xt=urn:btih:hash1' },
+        { hash: 'hash2', servers: ['https://blossom-a.example'], torrentURI: 'magnet:?xt=urn:btih:hash2' },
       ],
-      coverUpload: { hash: 'cover-hash', servers: ['https://blossom-a.example', 'https://blossom-cover.example'] },
+      coverUpload: { hash: 'cover-hash', servers: ['https://blossom-a.example', 'https://blossom-cover.example'], torrentURI: 'magnet:?xt=urn:btih:cover' },
     })
 
     expect(draft.comicDTag).toBe('test-comic')
@@ -54,6 +54,7 @@ describe('publishDraft', () => {
       tags: expect.arrayContaining([
         ['author_pubkey', 'pub'],
         ['cover', 'cover-hash', 'https://blossom-a.example', 'https://blossom-cover.example'],
+        ['cover_torrent', 'cover-hash', 'magnet:?xt=urn:btih:cover'],
       ]),
     })
     expect(draft.events[1]).toMatchObject({
@@ -61,6 +62,8 @@ describe('publishDraft', () => {
       tags: expect.arrayContaining([
         ['page', 'blossom://hash1', 'https://blossom-a.example', 'https://blossom-b.example'],
         ['page', 'blossom://hash2', 'https://blossom-a.example'],
+        ['page_torrent', 'blossom://hash1', 'magnet:?xt=urn:btih:hash1'],
+        ['page_torrent', 'blossom://hash2', 'magnet:?xt=urn:btih:hash2'],
       ]),
     })
   })
@@ -82,6 +85,7 @@ describe('publishDraft', () => {
         blossomServer: 'https://blossom-existing.example',
         coverServer: 'https://blossom-existing.example',
         coverServers: ['https://blossom-existing.example'],
+        coverTorrent: 'magnet:?xt=urn:btih:existing-cover',
         tags: ['action'],
         nsfw: false,
         eventId: 'comic-1',
@@ -107,6 +111,7 @@ describe('publishDraft', () => {
       kind: 30040,
       tags: expect.arrayContaining([
         ['cover', 'existing-cover', 'https://blossom-existing.example'],
+        ['cover_torrent', 'existing-cover', 'magnet:?xt=urn:btih:existing-cover'],
       ]),
     })
   })
@@ -130,6 +135,8 @@ describe('publishDraft', () => {
           ['https://blossom-existing.example', 'https://blossom-backup.example'],
           ['https://blossom-existing.example'],
         ],
+        pageTorrents: ['magnet:?xt=urn:btih:hash1', 'magnet:?xt=urn:btih:hash2'],
+        torrent: 'magnet:?xt=urn:btih:chapter',
         publishedAt: 123,
         eventId: 'chapter-1',
       },
@@ -171,6 +178,8 @@ describe('publishDraft', () => {
         ['title', 'Chapter 1 - Revised'],
         ['page', 'blossom://hash1', 'https://blossom-existing.example', 'https://blossom-backup.example'],
         ['page', 'blossom://hash2', 'https://blossom-existing.example', 'https://blossom-backup.example'],
+        ['page_torrent', 'blossom://hash1', 'magnet:?xt=urn:btih:hash1'],
+        ['page_torrent', 'blossom://hash2', 'magnet:?xt=urn:btih:hash2'],
       ]),
     })
   })

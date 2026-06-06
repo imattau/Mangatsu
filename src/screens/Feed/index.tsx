@@ -516,6 +516,7 @@ function ComicCover({
             hash={comic.coverHash}
             server={server}
             servers={comic.coverServers}
+            torrent={comic.coverTorrent}
             alt={comic.title}
             className="h-full w-full object-cover blur-sm brightness-50"
           />
@@ -534,6 +535,7 @@ function ComicCover({
       hash={comic.coverHash}
       server={server}
       servers={comic.coverServers}
+      torrent={comic.coverTorrent}
       alt={comic.title}
       className={baseClass}
     />

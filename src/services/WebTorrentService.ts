@@ -185,7 +185,11 @@ export class WebTorrentService {
     })
   }
 
-  async seedFiles(files: File[], name: string): Promise<{ magnetURI: string; infoHash: string }> {
+  async seedFiles(
+    files: File[],
+    name: string,
+    urlList: string[] = [],
+  ): Promise<{ magnetURI: string; infoHash: string }> {
     const client = await this.getClient()
     const trackers = this.getTrackers()
 
@@ -195,6 +199,7 @@ export class WebTorrentService {
         {
           name,
           announceList: trackers.map((t) => [t]),
+          urlList,
         } as any,
         (torrent) => {
           this.registerTorrent(torrent.magnetURI, torrent)

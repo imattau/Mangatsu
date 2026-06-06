@@ -81,7 +81,6 @@ export function PublishStep({
         existingComic,
         publishComic: isNewComic || !chapter,
         publishChapter,
-        magnetURI,
       })
 
       await publishDraft(service, draft)
@@ -101,6 +100,10 @@ export function PublishStep({
                     ...(existingComic?.coverServers ?? []),
                     existingComic?.coverServer,
                   ].filter(Boolean) as string[],
+                  torrentURI:
+                    existingChapter.pageTorrents?.[index] ??
+                    existingChapter.torrent ??
+                    undefined,
                 }))
               : []
         if (existingChapter && existingChapter.dTag !== nextChapterDTag) {
@@ -118,9 +121,10 @@ export function PublishStep({
           blossomServer: pageArtifacts[0]?.servers[0] ?? existingChapter?.blossomServer ?? '',
           pageServers: pageArtifacts.map((upload) => upload.servers[0] ?? ''),
           pageServerLists: pageArtifacts.map((upload) => upload.servers),
+          pageTorrents: pageArtifacts.map((upload) => upload.torrentURI ?? ''),
           publishedAt: draft.createdAt,
           eventId: draft.events.at(-1)?.id ?? existingChapter?.eventId ?? nextChapterDTag,
-          torrent: magnetURI ?? existingChapter?.torrent,
+          torrent: pageArtifacts[0]?.torrentURI ?? existingChapter?.torrent,
         })
       }
 
@@ -230,7 +234,7 @@ export function PublishStep({
             {magnetURI ? (
               <>
                 <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-zinc-200">Active — Seeding chapter P2P (magnet link generated)</span>
+                <span className="text-zinc-200">Active — Seeding page torrents for P2P fallback</span>
               </>
             ) : (
               <>

@@ -8,12 +8,13 @@ import { BrandMark } from '@/components/BrandMark'
 import { useAuthStore } from '@/stores/authStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { useComicStore } from '@/stores/comicStore'
-import type { Chapter, Comic } from '@/types'
+import type { Comic } from '@/types'
 import { MetadataStep, type MetadataFormValues } from './MetadataStep'
 import { ChapterStep, type ChapterFormValues } from './ChapterStep'
 import { UploadStep, type UploadResult } from './UploadStep'
 import { PublishStep } from './PublishStep'
 import { DoneStep } from './DoneStep'
+import { parseChapterEvent, parseComicEvent } from '@/lib/comic'
 
 type Step = 'metadata' | 'chapter' | 'upload' | 'publish' | 'done'
 
@@ -54,94 +55,9 @@ function defaultChapter(): ChapterFormValues {
   }
 }
 
-function parseTag(event: NostrEvent, name: string) {
-  return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
-}
-
-function parseTagTail(event: NostrEvent, name: string, startIndex: number) {
-  const tag = event.tags.find((entry) => entry[0] === name)
-  return tag ? tag.slice(startIndex).filter(Boolean) : []
-}
-
-function parseAnyTag(event: NostrEvent, names: string[]) {
-  for (const name of names) {
-    const value = parseTag(event, name)
-    if (value) {
-      return value
-    }
-  }
-  return ''
-}
-
-function parsePageUploads(event: NostrEvent): Array<{ hash: string; server: string }> {
-  return event.tags
-    .filter((tag) => tag[0] === 'page')
-    .map((tag) => {
-      const raw = tag[1] ?? ''
-      const hash = raw.startsWith('blossom://') ? raw.slice('blossom://'.length) : raw
-      return { hash, server: tag[2] ?? '' }
-    })
-    .filter((upload) => upload.hash.length > 0)
-}
-
-function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
-  const dTag = parseTag(event, 'd')
-  if (!dTag) {
-    return null
-  }
-
-  const coverServers = [...parseTagTail(event, 'cover', 2), ...parseTagTail(event, 'image', 2)]
-  const coverServer = coverServers[0] || ''
-
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    dTag,
-    title: parseTag(event, 'title') || event.content || 'Untitled',
-    author: parseTag(event, 'author'),
-    authorPubkey: parseTag(event, 'author_pubkey'),
-    description: parseTag(event, 'description') || event.content || '',
-    coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
-    blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
-    coverServer,
-    coverServers,
-    tags: event.tags
-      .filter((tag) => tag[0] === 't')
-      .map((tag) => tag[1])
-      .filter(Boolean),
-    nsfw: event.tags.some((tag) => tag[0] === 'content-warning'),
-    eventId: event.id,
-  }
-}
-
 function parseChapterNumberFromDTag(dTag: string): number {
   const match = dTag.match(/(\d+(?:\.\d+)?)$/)
   return match ? parseFloat(match[1]) : 1
-}
-
-function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null {
-  const dTag = parseTag(event, 'd')
-  if (!dTag || !dTag.startsWith(`${comicDTag}/`)) {
-    return null
-  }
-
-  const pageUploads = parsePageUploads(event)
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    dTag,
-    parentDTag: comicDTag,
-    title: parseTag(event, 'title') || dTag,
-    pageHashes: pageUploads.map((upload) => upload.hash),
-    blossomServer: parseTag(event, 'blossom') || pageUploads[0]?.server || '',
-    pageServers: pageUploads.map((upload) => upload.server),
-    pageServerLists: event.tags
-      .filter((tag) => tag[0] === 'page')
-      .map((tag) => tag.slice(2).filter(Boolean)),
-    publishedAt: event.created_at ?? 0,
-    eventId: event.id,
-    torrent: parseTag(event, 'torrent') || parseTag(event, 'magnet') || undefined,
-  }
 }
 
 function metadataFromComic(comic: Comic | null | undefined): MetadataFormValues {

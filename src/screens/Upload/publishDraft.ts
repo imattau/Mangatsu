@@ -9,6 +9,7 @@ export interface UploadArtifact {
   hash: string
   servers: string[]
   missingServers?: string[]
+  torrentURI?: string
 }
 
 export interface PublishDraftInput {
@@ -22,7 +23,6 @@ export interface PublishDraftInput {
   existingComic?: Comic | null
   publishComic?: boolean
   publishChapter?: boolean
-  magnetURI?: string
 }
 
 export interface PublishDraft {
@@ -57,6 +57,7 @@ export async function buildPublishDraft(
               ...(input.existingComic.coverServer ? [input.existingComic.coverServer] : []),
               ...(input.existingComic.blossomServer ? [input.existingComic.blossomServer] : []),
             ].filter(Boolean))],
+            torrentURI: input.existingComic.coverTorrent,
           }
         : null
     const coverUpload = input.coverUpload ?? existingCoverUpload
@@ -71,6 +72,9 @@ export async function buildPublishDraft(
     if (input.metadata.description) comicTags.push(['description', input.metadata.description])
     if (coverUpload) {
       comicTags.push(['cover', coverUpload.hash, ...(coverUpload.servers ?? [])])
+      if (coverUpload.torrentURI) {
+        comicTags.push(['cover_torrent', coverUpload.hash, coverUpload.torrentURI])
+      }
     }
     for (const t of input.metadata.tags.split(',').map((s) => s.trim()).filter(Boolean)) {
       comicTags.push(['t', t])
@@ -105,6 +109,10 @@ export async function buildPublishDraft(
                     ...(input.existingComic?.coverServers ?? []),
                     input.existingComic?.coverServer,
                   ].filter(Boolean) as string[])],
+                  torrentURI:
+                    chapterSource.pageTorrents?.[index] ??
+                    chapterSource.torrent ??
+                    undefined,
                 }))
               : []
 
@@ -129,12 +137,10 @@ export async function buildPublishDraft(
         ['L', 'com.mangatsu'],
         ['l', 'chapter', 'com.mangatsu'],
         ...pageUploads.map((upload) => ['page', `blossom://${upload.hash}`, ...upload.servers]),
+        ...pageUploads.flatMap((upload) =>
+          upload.torrentURI ? [['page_torrent', `blossom://${upload.hash}`, upload.torrentURI]] : [],
+        ),
       ]
-      
-      const torrentUrl = input.magnetURI || chapterSource?.torrent
-      if (torrentUrl) {
-        chapterTags.push(['torrent', torrentUrl])
-      }
 
       const chapterTemplate = {
         kind: 30041,

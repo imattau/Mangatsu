@@ -17,6 +17,7 @@ import {
   groupBlossomAssetsByServer,
   probeBlossomAssetExists,
 } from '@/lib/blossom'
+import { parseChapterEvent, parseComicEvent } from '@/lib/comic'
 import { ComicCommentsSection } from '@/components/ComicComments'
 import {
   areTargetsCached,
@@ -24,87 +25,6 @@ import {
   comicOfflineTargets,
   removeTargetsFromOfflineCache,
 } from '@/lib/offline'
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function parseTag(event: NostrEvent, name: string): string {
-  return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
-}
-
-function parseTagTail(event: NostrEvent, name: string, startIndex: number): string[] {
-  const tag = event.tags.find((entry) => entry[0] === name)
-  return tag ? tag.slice(startIndex).filter(Boolean) : []
-}
-
-function parseAnyTag(event: NostrEvent, names: string[]): string {
-  for (const name of names) {
-    const value = parseTag(event, name)
-    if (value) return value
-  }
-  return ''
-}
-
-function parsePageUploads(event: NostrEvent): Array<{ hash: string; server: string }> {
-  return event.tags
-    .filter((tag) => tag[0] === 'page')
-    .map((tag) => {
-      const raw = tag[1] ?? ''
-      const hash = raw.startsWith('blossom://') ? raw.slice('blossom://'.length) : raw
-      return { hash, server: tag[2] ?? '' }
-    })
-    .filter((upload) => upload.hash.length > 0)
-}
-
-function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null {
-  const dTag = parseTag(event, 'd')
-  if (!dTag || !dTag.startsWith(`${comicDTag}/`)) return null
-  const pageUploads = parsePageUploads(event)
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    dTag,
-    parentDTag: comicDTag,
-    title: parseTag(event, 'title') || dTag,
-    pageHashes: pageUploads.map((upload) => upload.hash),
-    pageServers: pageUploads.map((upload) => upload.server),
-    pageServerLists: event.tags
-      .filter((tag) => tag[0] === 'page')
-      .map((tag) => tag.slice(2).filter(Boolean)),
-    blossomServer: parseTag(event, 'blossom') || pageUploads[0]?.server || '',
-    publishedAt: event.created_at ?? 0,
-    eventId: event.id,
-    torrent: parseTag(event, 'torrent') || parseTag(event, 'magnet') || undefined,
-  }
-}
-
-function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
-  const dTag = parseTag(event, 'd')
-  if (!dTag) return null
-  const coverHash = parseAnyTag(event, ['cover', 'cover_hash', 'image'])
-  const coverServers = [
-    ...parseTagTail(event, 'cover', 2),
-    ...parseTagTail(event, 'image', 2),
-  ]
-  const coverServer = coverServers[0] || ''
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    dTag,
-    title: parseTag(event, 'title') || event.content || 'Untitled',
-    author: parseTag(event, 'author'),
-    authorPubkey: parseTag(event, 'author_pubkey'),
-    description: parseTag(event, 'description') || event.content || '',
-    coverHash,
-    coverServer,
-    coverServers,
-    blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
-    tags: event.tags.filter((t) => t[0] === 't').map((t) => t[1]).filter(Boolean),
-    nsfw: event.tags.some((tag) => tag[0] === 'content-warning'),
-    eventId: event.id,
-  }
-}
 
 function chapterNumber(dTag: string): number {
   const match = dTag.match(/(\d+(?:\.\d+)?)$/)
@@ -536,6 +456,7 @@ export function ComicDetailScreen() {
                 hash={comic.coverHash}
                 server={server}
                 servers={comic.coverServers}
+                torrent={comic.coverTorrent}
                 title={comic.title}
               />
             <div className="flex-1 min-w-0">
@@ -835,11 +756,13 @@ function CoverImage({
   hash,
   server,
   servers,
+  torrent,
   title,
 }: {
   hash: string
   server: string | undefined
   servers?: string[]
+  torrent?: string
   title: string
 }) {
   const className =
@@ -850,6 +773,7 @@ function CoverImage({
       hash={hash}
       server={server}
       servers={servers}
+      torrent={torrent}
       alt={title}
       loading="lazy"
       className={className}

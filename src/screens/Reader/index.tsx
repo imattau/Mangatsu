@@ -58,12 +58,14 @@ export function ReaderScreen() {
         ? chapter.pageHashes.map((h, idx) => {
             const pageServerList = chapter.pageServerLists?.[idx] ?? []
             const pageServer = chapter.pageServers?.[idx] || server
+            const pageTorrent = chapter.pageTorrents?.[idx] || chapter.torrent
             const explicitServers = [...new Set([...(pageServerList ?? []), pageServer].filter(Boolean))]
             const cachedUrl = cachedHashes[h] || ''
             return {
               hash: h,
               server: pageServer,
               servers: explicitServers,
+              torrent: pageTorrent,
               url: `${pageServer.replace(/\/$/, '')}/${h}`,
               cachedUrl,
               isCached: Boolean(cachedUrl),
@@ -168,7 +170,7 @@ export function ReaderScreen() {
               hash={page.hash}
               server={page.server}
               servers={page.servers}
-              torrent={chapter.torrent}
+              torrent={page.torrent}
               alt={`Page ${idx + 1}`}
               className="block w-full snap-start snap-always"
               loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}

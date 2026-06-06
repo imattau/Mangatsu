@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { webTorrentService, DEFAULT_TRACKERS } from '../services/WebTorrentService'
 import { useSettingsStore } from '../stores/settingsStore'
 
 describe('WebTorrentService', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     webTorrentService.cleanupAll()
   })
 
@@ -29,8 +30,27 @@ describe('WebTorrentService', () => {
 
   it('seeds files correctly', async () => {
     const file = new File(['dummy content'], 'test.webp', { type: 'image/webp' })
+    const onMock = vi.fn().mockReturnThis()
+    const seedMock = vi.fn(() => ({ on: onMock }))
+    const getClientSpy = vi.spyOn(webTorrentService, 'getClient').mockResolvedValue({
+      seed: seedMock,
+    } as never)
 
-    const result = await webTorrentService.seedFiles([file], 'test-chapter')
+    const result = await webTorrentService.seedFiles([file], 'test-chapter', [
+      'https://blossom-a.example/',
+      'https://blossom-b.example/',
+    ])
+
+    expect(getClientSpy).toHaveBeenCalled()
+    expect(seedMock).toHaveBeenCalledWith(
+      [file],
+      expect.objectContaining({
+        name: 'test-chapter',
+        announceList: DEFAULT_TRACKERS.map((tracker) => [tracker]),
+        urlList: ['https://blossom-a.example/', 'https://blossom-b.example/'],
+      }),
+      expect.any(Function),
+    )
     expect(result.magnetURI).toBe('magnet:?xt=urn:btih:mock')
     expect(result.infoHash).toBe('mock')
   })

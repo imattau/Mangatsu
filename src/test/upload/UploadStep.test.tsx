@@ -1,6 +1,7 @@
 import { render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UploadStep } from '../../screens/Upload/UploadStep'
+import { webTorrentService } from '../../services/WebTorrentService'
 
 const mockUpload = vi.fn()
 const mockSetCachedHash = vi.fn()
@@ -41,6 +42,7 @@ vi.mock('../../stores/blossomStore', () => ({
 
 describe('UploadStep', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     mockUpload.mockReset()
     mockSetCachedHash.mockReset()
   })
@@ -48,6 +50,10 @@ describe('UploadStep', () => {
   it('allows publish when each asset has at least one successful blossom server', async () => {
     const onDone = vi.fn()
     const file = new File(['page'], 'page.webp', { type: 'image/webp' })
+    const seedFilesSpy = vi.spyOn(webTorrentService, 'seedFiles').mockResolvedValue({
+      magnetURI: 'magnet:?xt=urn:btih:test',
+      infoHash: 'info',
+    })
 
     mockUpload.mockImplementation(async (_file: File, serverUrl: string) => {
       if (serverUrl === 'https://a.example') {
@@ -74,10 +80,18 @@ describe('UploadStep', () => {
               hash: 'hash-1',
               servers: ['https://a.example'],
               missingServers: ['https://b.example', 'https://default.example'],
+              torrentURI: 'magnet:?xt=urn:btih:test',
             }),
           ],
+          magnetURI: 'magnet:?xt=urn:btih:test',
         }),
       )
     })
+
+    expect(seedFilesSpy).toHaveBeenCalledWith(
+      [expect.objectContaining({ name: 'hash-1' })],
+      'hash-1',
+      ['https://a.example/'],
+    )
   })
 })

@@ -31,6 +31,10 @@ interface UploadStepProps {
   onBack: () => void
 }
 
+function buildTorrentFile(file: File, hash: string): File {
+  return new File([file], hash, { type: file.type })
+}
+
 export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: UploadStepProps) {
   const servers = useBlossomStore((s) => s.servers)
   const setCachedHash = useBlossomStore((s) => s.setCachedHash)
@@ -98,11 +102,26 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     }
   }
 
-  async function convertAndUploadToAll(file: File, serverUrls: string[]): Promise<UploadArtifact> {
-    setPhase('converting')
-    const webpFile = await convertImageFileToWebp(file)
-    setPhase('uploading')
-    return uploadToAll(webpFile, serverUrls)
+  async function seedAssetTorrent(file: File, hash: string, serverUrls: string[]): Promise<string | undefined> {
+    if (!webTorrentService.isWebTorrentEnabled()) {
+      return undefined
+    }
+
+    if (serverUrls.length === 0) {
+      return undefined
+    }
+
+    try {
+      const torrentResult = await webTorrentService.seedFiles(
+        [buildTorrentFile(file, hash)],
+        hash,
+        serverUrls.map((server) => `${server.replace(/\/$/, '')}/`),
+      )
+      return torrentResult.magnetURI
+    } catch (err) {
+      console.warn(`Failed to seed torrent for ${hash}:`, err)
+      return undefined
+    }
   }
 
   async function run() {
@@ -120,7 +139,6 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
 
     const serverUrls = getUploadServers()
     const pageUploads: UploadArtifactState[] = []
-    const convertedNamedFiles: File[] = []
 
     for (const page of pages) {
       try {
@@ -128,15 +146,13 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
         const webpFile = await convertImageFileToWebp(page)
         setPhase('uploading')
         const upload = await uploadToAll(webpFile, serverUrls)
+        const torrentURI = await seedAssetTorrent(webpFile, upload.hash, upload.servers)
 
         pageUploads.push({
           ...upload,
           missingServers: upload.missingServers ?? [],
+          torrentURI,
         })
-
-        const extension = webpFile.name.split('.').pop() || 'webp'
-        const namedFile = new File([webpFile], `${upload.hash}.${extension}`, { type: webpFile.type })
-        convertedNamedFiles.push(namedFile)
 
         setUploaded((n) => n + 1)
       } catch (err) {
@@ -151,10 +167,18 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     const coverSource = coverMode === 'first-page' ? pages[0] : coverFile
     if (coverSource) {
       try {
-        const upload = await convertAndUploadToAll(coverSource, serverUrls)
+        setPhase('converting')
+        const webpFile = await convertImageFileToWebp(coverSource)
+        setPhase('uploading')
+        const upload = await uploadToAll(webpFile, serverUrls)
+        const torrentURI =
+          coverMode === 'first-page'
+            ? pageUploads[0]?.torrentURI ?? await seedAssetTorrent(webpFile, upload.hash, upload.servers)
+            : await seedAssetTorrent(webpFile, upload.hash, upload.servers)
         coverUpload = {
           ...upload,
           missingServers: upload.missingServers ?? [],
+          torrentURI,
         }
         setUploaded((n) => n + 1)
       } catch (err) {
@@ -162,17 +186,6 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
         setRunning(false)
         setPhase('idle')
         return
-      }
-    }
-
-    let magnetURI: string | undefined = undefined
-    if (webTorrentService.isWebTorrentEnabled() && convertedNamedFiles.length > 0) {
-      try {
-        const title = `Chapter-${Date.now()}`
-        const torrentResult = await webTorrentService.seedFiles(convertedNamedFiles, title)
-        magnetURI = torrentResult.magnetURI
-      } catch (torrentErr) {
-        console.warn('Failed to seed chapter torrent:', torrentErr)
       }
     }
 
@@ -185,7 +198,12 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
 
     setRunning(false)
     setPhase('idle')
-    onDone({ pageUploads, coverUpload, serverResults, magnetURI })
+    onDone({
+      pageUploads,
+      coverUpload,
+      serverResults,
+      magnetURI: pageUploads.find((upload) => upload.torrentURI)?.torrentURI ?? coverUpload?.torrentURI,
+    })
   }
 
   const percent = total > 0 ? Math.round((uploaded / total) * 100) : 0

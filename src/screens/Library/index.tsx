@@ -564,14 +564,15 @@ function CoverImage({
   }
 
   return (
-    <BlossomImage
-      hash={comic.coverHash}
-      server={server}
-      servers={servers}
-      alt={comic.title}
-      loading="lazy"
-      className={className}
-    />
+      <BlossomImage
+        hash={comic.coverHash}
+        server={server}
+        servers={servers}
+        torrent={comic.coverTorrent}
+        alt={comic.title}
+        loading="lazy"
+        className={className}
+      />
   )
 }
 

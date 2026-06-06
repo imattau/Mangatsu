@@ -1,5 +1,5 @@
 import type { NostrEvent } from 'applesauce-core/helpers/event'
-import type { Comic } from '@/types'
+import type { Chapter, Comic } from '@/types'
 
 export function parseTag(event: NostrEvent, name: string): string {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
@@ -16,6 +16,31 @@ export function parseAnyTag(event: NostrEvent, names: string[]): string {
     if (value) return value
   }
   return ''
+}
+
+function parsePageUploads(event: NostrEvent): Array<{ hash: string; server: string }> {
+  return event.tags
+    .filter((tag) => tag[0] === 'page')
+    .map((tag) => {
+      const raw = tag[1] ?? ''
+      const hash = raw.startsWith('blossom://') ? raw.slice('blossom://'.length) : raw
+      return { hash, server: tag[2] ?? '' }
+    })
+    .filter((upload) => upload.hash.length > 0)
+}
+
+function parsePageTorrentMap(event: NostrEvent): Record<string, string> {
+  return event.tags
+    .filter((tag) => tag[0] === 'page_torrent')
+    .reduce<Record<string, string>>((acc, tag) => {
+      const raw = tag[1] ?? ''
+      const hash = raw.startsWith('blossom://') ? raw.slice('blossom://'.length) : raw
+      const torrent = tag[2] ?? ''
+      if (hash && torrent) {
+        acc[hash] = torrent
+      }
+      return acc
+    }, {})
 }
 
 export function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
@@ -38,11 +63,39 @@ export function parseComicEvent(event: NostrEvent, server: string | undefined): 
     blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
     coverServer,
     coverServers,
+    coverTorrent: parseAnyTag(event, ['cover_torrent', 'image_torrent']) || undefined,
     tags: event.tags
       .filter((tag) => tag[0] === 't')
       .map((tag) => tag[1])
       .filter(Boolean),
     nsfw: event.tags.some((tag) => tag[0] === 'content-warning'),
     eventId: event.id,
+  }
+}
+
+export function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter | null {
+  const dTag = parseTag(event, 'd')
+  if (!dTag || !dTag.startsWith(`${comicDTag}/`)) return null
+
+  const pageUploads = parsePageUploads(event)
+  const pageTorrentMap = parsePageTorrentMap(event)
+  const chapterTorrent = parseTag(event, 'torrent') || parseTag(event, 'magnet') || ''
+
+  return {
+    id: event.id,
+    pubkey: event.pubkey,
+    dTag,
+    parentDTag: comicDTag,
+    title: parseTag(event, 'title') || dTag,
+    pageHashes: pageUploads.map((upload) => upload.hash),
+    pageServers: pageUploads.map((upload) => upload.server),
+    pageServerLists: event.tags
+      .filter((tag) => tag[0] === 'page')
+      .map((tag) => tag.slice(2).filter(Boolean)),
+    pageTorrents: pageUploads.map((upload) => pageTorrentMap[upload.hash] || chapterTorrent || ''),
+    blossomServer: parseTag(event, 'blossom') || pageUploads[0]?.server || '',
+    publishedAt: event.created_at ?? 0,
+    eventId: event.id,
+    torrent: chapterTorrent || pageTorrentMap[pageUploads[0]?.hash ?? ''] || undefined,
   }
 }
