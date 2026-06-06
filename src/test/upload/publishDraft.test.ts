@@ -37,6 +37,10 @@ describe('publishDraft', () => {
         chapterTitle: 'Chapter 1',
         chapterNumber: 1,
         pages: [],
+        pageDimensions: [
+          { width: 1200, height: 1800 },
+          { width: 1000, height: 1600 },
+        ],
         firstPageObjectUrl: null,
       },
       pageUploads: [
@@ -62,6 +66,8 @@ describe('publishDraft', () => {
       tags: expect.arrayContaining([
         ['page', 'blossom://hash1', 'https://blossom-a.example', 'https://blossom-b.example'],
         ['page', 'blossom://hash2', 'https://blossom-a.example'],
+        ['page_dimensions', 'blossom://hash1', '1200', '1800'],
+        ['page_dimensions', 'blossom://hash2', '1000', '1600'],
         ['page_torrent', 'blossom://hash1', 'magnet:?xt=urn:btih:hash1'],
         ['page_torrent', 'blossom://hash2', 'magnet:?xt=urn:btih:hash2'],
       ]),
@@ -129,6 +135,10 @@ describe('publishDraft', () => {
         parentDTag: 'test-comic',
         title: 'Chapter 1',
         pageHashes: ['hash1', 'hash2'],
+        pageDimensions: [
+          { width: 1200, height: 1800 },
+          { width: 1000, height: 1600 },
+        ],
         blossomServer: 'https://blossom-existing.example',
         pageServers: ['https://blossom-existing.example', 'https://blossom-backup.example'],
         pageServerLists: [
@@ -156,6 +166,10 @@ describe('publishDraft', () => {
         chapterTitle: 'Chapter 1 - Revised',
         chapterNumber: 2,
         pages: [],
+        pageDimensions: [
+          { width: 1200, height: 1800 },
+          { width: 1000, height: 1600 },
+        ],
         firstPageObjectUrl: null,
       },
       pageUploads: [],
@@ -178,6 +192,8 @@ describe('publishDraft', () => {
         ['title', 'Chapter 1 - Revised'],
         ['page', 'blossom://hash1', 'https://blossom-existing.example', 'https://blossom-backup.example'],
         ['page', 'blossom://hash2', 'https://blossom-existing.example', 'https://blossom-backup.example'],
+        ['page_dimensions', 'blossom://hash1', '1200', '1800'],
+        ['page_dimensions', 'blossom://hash2', '1000', '1600'],
         ['page_torrent', 'blossom://hash1', 'magnet:?xt=urn:btih:hash1'],
         ['page_torrent', 'blossom://hash2', 'magnet:?xt=urn:btih:hash2'],
       ]),

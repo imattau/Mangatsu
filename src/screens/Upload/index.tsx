@@ -51,6 +51,7 @@ function defaultChapter(): ChapterFormValues {
     chapterTitle: '',
     chapterNumber: 1,
     pages: [],
+    pageDimensions: [],
     firstPageObjectUrl: null,
   }
 }
@@ -194,6 +195,7 @@ export function UploadScreen() {
       chapterTitle: existingChapter.title,
       chapterNumber: parseChapterNumberFromDTag(existingChapter.dTag),
       pages: [],
+      pageDimensions: existingChapter.pageDimensions ?? [],
       firstPageObjectUrl: null,
     })
     chapterEditPrefilledRef.current = true
@@ -208,6 +210,7 @@ export function UploadScreen() {
           chapterTitle: existingChapter.title,
           chapterNumber: parseChapterNumberFromDTag(existingChapter.dTag),
           pages: [],
+          pageDimensions: existingChapter.pageDimensions ?? [],
           firstPageObjectUrl: null,
         }
       : defaultChapter())

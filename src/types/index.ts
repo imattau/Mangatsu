@@ -16,6 +16,11 @@ export interface Comic {
   eventId: string
 }
 
+export interface PageDimensions {
+  width: number
+  height: number
+}
+
 export interface Chapter {
   id: string
   pubkey: string
@@ -23,6 +28,7 @@ export interface Chapter {
   parentDTag: string
   title: string
   pageHashes: string[]
+  pageDimensions?: PageDimensions[]
   blossomServer: string
   pageServers?: string[]
   pageServerLists?: string[][]

@@ -1,4 +1,5 @@
 import { MAX_IMAGE_RENDER_DIMENSION } from './limits'
+import type { PageDimensions } from '@/types'
 
 export function replaceExtension(filename: string, extension: string): string {
   const dot = filename.lastIndexOf('.')
@@ -28,9 +29,47 @@ export function canvasToBlob(
   })
 }
 
-export async function convertImageFileToWebp(file: File, quality = 0.9): Promise<File> {
+export async function readImageDimensions(file: Blob): Promise<PageDimensions> {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file)
+    try {
+      return { width: bitmap.width, height: bitmap.height }
+    } finally {
+      bitmap.close()
+    }
+  }
+
+  if (typeof Image === 'undefined') {
+    throw new Error('Image dimension probing is not supported in this browser')
+  }
+
+  return await new Promise<PageDimensions>((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      resolve({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('Failed to read image dimensions'))
+    }
+    image.src = objectUrl
+  })
+}
+
+export async function convertImageFileToWebp(
+  file: File,
+  quality = 0.9,
+): Promise<{ file: File; dimensions: PageDimensions }> {
   if (file.type === 'image/webp' || file.name.toLowerCase().endsWith('.webp')) {
-    return file
+    return {
+      file,
+      dimensions: await readImageDimensions(file),
+    }
   }
 
   if (typeof createImageBitmap !== 'function') {
@@ -72,7 +111,10 @@ export async function convertImageFileToWebp(file: File, quality = 0.9): Promise
     context.drawImage(bitmap, 0, 0, width, height)
     const blob = await canvasToBlob(canvas, 'image/webp', quality)
     const webpName = replaceExtension(file.name, '.webp')
-    return new File([blob], webpName, { type: 'image/webp' })
+    return {
+      file: new File([blob], webpName, { type: 'image/webp' }),
+      dimensions: { width, height },
+    }
   } finally {
     bitmap.close()
   }

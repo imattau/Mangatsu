@@ -78,6 +78,7 @@ describe('PublishStep', () => {
           chapterTitle: 'Chapter 1',
           chapterNumber: 1,
           pages: [],
+          pageDimensions: [],
           firstPageObjectUrl: null,
         }}
         pageUploads={[]}
@@ -156,6 +157,7 @@ describe('PublishStep', () => {
           chapterTitle: 'Chapter 1',
           chapterNumber: 1,
           pages: [],
+          pageDimensions: [],
           firstPageObjectUrl: null,
         }}
         pageUploads={[

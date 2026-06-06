@@ -4,6 +4,7 @@ import {
   MAX_CHAPTER_SOURCE_BYTES,
   MAX_PDF_RENDER_DIMENSION,
 } from './limits'
+import type { PageDimensions } from '@/types'
 import {
   GlobalWorkerOptions,
   getDocument,
@@ -41,7 +42,7 @@ async function renderPageToWebp(
   page: PDFPageProxy,
   fileName: string,
   pageNumber: number,
-): Promise<File> {
+): Promise<{ file: File; dimensions: PageDimensions }> {
   const baseViewport = page.getViewport({ scale: 1 })
   const scale = Math.min(
     MAX_PDF_RENDER_DIMENSION / baseViewport.width,
@@ -66,11 +67,15 @@ async function renderPageToWebp(
 
   await (page.render({ canvasContext: context as never, viewport } as never) as { promise: Promise<void> }).promise
   const blob = await canvasToBlob(canvas, 'image/webp', 0.9)
-  return new File([blob], toPageFileName(fileName, pageNumber), { type: 'image/webp' })
+  return {
+    file: new File([blob], toPageFileName(fileName, pageNumber), { type: 'image/webp' }),
+    dimensions: { width: Math.ceil(viewport.width), height: Math.ceil(viewport.height) },
+  }
 }
 
 export async function convertPdfFileToWebpPages(file: File): Promise<{
   pages: File[]
+  pageDimensions: PageDimensions[]
   firstPageObjectUrl: string
 }> {
   if (file.size > MAX_CHAPTER_SOURCE_BYTES) {
@@ -90,6 +95,7 @@ export async function convertPdfFileToWebpPages(file: File): Promise<{
   }
 
   const pages: File[] = []
+  const pageDimensions: PageDimensions[] = []
   let firstPageObjectUrl = ''
 
   for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
@@ -97,9 +103,10 @@ export async function convertPdfFileToWebpPages(file: File): Promise<{
     try {
       const webpPage = await renderPageToWebp(page, file.name, pageNumber)
       if (pageNumber === 1) {
-        firstPageObjectUrl = URL.createObjectURL(webpPage)
+        firstPageObjectUrl = URL.createObjectURL(webpPage.file)
       }
-      pages.push(webpPage)
+      pages.push(webpPage.file)
+      pageDimensions.push(webpPage.dimensions)
     } finally {
       page.cleanup()
     }
@@ -109,5 +116,5 @@ export async function convertPdfFileToWebpPages(file: File): Promise<{
     throw new Error('PDF did not contain any renderable pages')
   }
 
-  return { pages, firstPageObjectUrl }
+  return { pages, pageDimensions, firstPageObjectUrl }
 }

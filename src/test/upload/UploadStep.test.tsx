@@ -13,7 +13,10 @@ vi.mock('../../services/BlossomService', () => ({
 }))
 
 vi.mock('../../screens/Upload/webp', () => ({
-  convertImageFileToWebp: async (file: File) => file,
+  convertImageFileToWebp: async (file: File) => ({
+    file,
+    dimensions: { width: 800, height: 1200 },
+  }),
 }))
 
 vi.mock('../../context/NostrContext', () => ({

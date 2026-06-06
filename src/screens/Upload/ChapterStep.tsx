@@ -1,12 +1,15 @@
 import { useState, useCallback } from 'react'
 import JSZip from 'jszip'
 import { convertPdfFileToWebpPages } from './pdf'
+import { readImageDimensions } from './webp'
 import { MAX_CHAPTER_PAGES, MAX_CHAPTER_SOURCE_BYTES } from './limits'
+import type { PageDimensions } from '@/types'
 
 export interface ChapterFormValues {
   chapterTitle: string
   chapterNumber: number
   pages: File[]
+  pageDimensions: PageDimensions[]
   firstPageObjectUrl: string | null
 }
 
@@ -95,7 +98,7 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
         const chapterNumber = infoNumber ?? fallback.number
         const chapterTitle = infoTitle ?? fallback.title
 
-        const pages: File[] = await Promise.all(
+        const parsedPages = await Promise.all(
           imageEntries.map(async (entry) => {
             const blob = await entry.async('blob')
             const ext = entry.name.match(/\.\w+$/)?.[0] ?? '.jpg'
@@ -105,14 +108,19 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
               '.png': 'image/png',
               '.webp': 'image/webp',
             }
-            return new File([blob], entry.name, { type: mimeMap[ext] ?? 'image/jpeg' })
+            return {
+              file: new File([blob], entry.name, { type: mimeMap[ext] ?? 'image/jpeg' }),
+              dimensions: await readImageDimensions(blob),
+            }
           }),
         )
+        const pages: File[] = parsedPages.map((page) => page.file)
+        const pageDimensions: PageDimensions[] = parsedPages.map((page) => page.dimensions)
 
         const firstPageBlob = await imageEntries[0].async('blob')
         const firstPageObjectUrl = URL.createObjectURL(firstPageBlob)
 
-        onChange({ chapterTitle, chapterNumber, pages, firstPageObjectUrl })
+        onChange({ chapterTitle, chapterNumber, pages, pageDimensions, firstPageObjectUrl })
       } catch (err) {
         setParseError(`Failed to parse CBZ: ${err instanceof Error ? err.message : String(err)}`)
       } finally {
@@ -135,7 +143,7 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
         }
 
         const fallback = parseTitleFromFilename(file.name)
-        const { pages, firstPageObjectUrl } = await convertPdfFileToWebpPages(file)
+        const { pages, pageDimensions, firstPageObjectUrl } = await convertPdfFileToWebpPages(file)
 
         if (pages.length > MAX_CHAPTER_PAGES) {
           setParseError(
@@ -148,6 +156,7 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
           chapterTitle: fallback.title,
           chapterNumber: fallback.number,
           pages,
+          pageDimensions,
           firstPageObjectUrl,
         })
       } catch (err) {

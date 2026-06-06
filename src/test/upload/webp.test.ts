@@ -45,8 +45,9 @@ describe('convertImageFileToWebp', () => {
     expect(drawImage).toHaveBeenCalled()
     expect(toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/webp', 0.9)
     expect(close).toHaveBeenCalled()
-    expect(result).toHaveProperty('name', 'page.webp')
-    expect(result).toHaveProperty('type', 'image/webp')
+    expect(result.file).toHaveProperty('name', 'page.webp')
+    expect(result.file).toHaveProperty('type', 'image/webp')
+    expect(result.dimensions).toEqual({ width: 320, height: 200 })
   })
 
   it('downscales large images to a 2000px long edge', async () => {
@@ -85,7 +86,14 @@ describe('convertImageFileToWebp', () => {
 
   it('returns webp files unchanged', async () => {
     const file = new File(['webp'], 'page.webp', { type: 'image/webp' })
+    globalThis.createImageBitmap = vi.fn(async () => ({
+      width: 1200,
+      height: 1800,
+      close: vi.fn(),
+    })) as never
+
     const result = await convertImageFileToWebp(file)
-    expect(result).toBe(file)
+    expect(result.file).toBe(file)
+    expect(result.dimensions).toEqual({ width: 1200, height: 1800 })
   })
 })

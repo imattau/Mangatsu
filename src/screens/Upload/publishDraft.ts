@@ -137,6 +137,12 @@ export async function buildPublishDraft(
         ['L', 'com.mangatsu'],
         ['l', 'chapter', 'com.mangatsu'],
         ...pageUploads.map((upload) => ['page', `blossom://${upload.hash}`, ...upload.servers]),
+        ...pageUploads.flatMap((upload, index) => {
+          const dimensions = input.chapter?.pageDimensions?.[index]
+          return dimensions
+            ? [['page_dimensions', `blossom://${upload.hash}`, String(dimensions.width), String(dimensions.height)]]
+            : []
+        }),
         ...pageUploads.flatMap((upload) =>
           upload.torrentURI ? [['page_torrent', `blossom://${upload.hash}`, upload.torrentURI]] : [],
         ),

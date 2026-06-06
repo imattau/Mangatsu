@@ -72,6 +72,10 @@ describe('convertPdfFileToWebpPages', () => {
     expect(result.pages).toHaveLength(2)
     expect(result.pages[0]).toHaveProperty('name', 'Chapter 03 - The Beginning-page-001.webp')
     expect(result.pages[0]).toHaveProperty('type', 'image/webp')
+    expect(result.pageDimensions).toEqual([
+      { width: 800, height: 1200 },
+      { width: 800, height: 1200 },
+    ])
     expect(result.firstPageObjectUrl).toBe('blob:first-page')
   })
 

@@ -1,5 +1,5 @@
 import type { NostrEvent } from 'applesauce-core/helpers/event'
-import type { Chapter, Comic } from '@/types'
+import type { Chapter, Comic, PageDimensions } from '@/types'
 
 export function parseTag(event: NostrEvent, name: string): string {
   return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
@@ -38,6 +38,21 @@ function parsePageTorrentMap(event: NostrEvent): Record<string, string> {
       const torrent = tag[2] ?? ''
       if (hash && torrent) {
         acc[hash] = torrent
+      }
+      return acc
+  }, {})
+}
+
+function parsePageDimensionsMap(event: NostrEvent): Record<string, { width: number; height: number }> {
+  return event.tags
+    .filter((tag) => tag[0] === 'page_dimensions')
+    .reduce<Record<string, { width: number; height: number }>>((acc, tag) => {
+      const raw = tag[1] ?? ''
+      const hash = raw.startsWith('blossom://') ? raw.slice('blossom://'.length) : raw
+      const width = Number.parseInt(tag[2] ?? '', 10)
+      const height = Number.parseInt(tag[3] ?? '', 10)
+      if (hash && Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+        acc[hash] = { width, height }
       }
       return acc
     }, {})
@@ -79,7 +94,14 @@ export function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter
 
   const pageUploads = parsePageUploads(event)
   const pageTorrentMap = parsePageTorrentMap(event)
+  const pageDimensionsMap = parsePageDimensionsMap(event)
   const chapterTorrent = parseTag(event, 'torrent') || parseTag(event, 'magnet') || ''
+  const parsedPageDimensions = pageUploads.map((upload) => pageDimensionsMap[upload.hash])
+  const pageDimensions = parsedPageDimensions.every(
+    (dimension): dimension is PageDimensions => Boolean(dimension),
+  )
+    ? parsedPageDimensions
+    : undefined
 
   return {
     id: event.id,
@@ -88,6 +110,7 @@ export function parseChapterEvent(event: NostrEvent, comicDTag: string): Chapter
     parentDTag: comicDTag,
     title: parseTag(event, 'title') || dTag,
     pageHashes: pageUploads.map((upload) => upload.hash),
+    pageDimensions,
     pageServers: pageUploads.map((upload) => upload.server),
     pageServerLists: event.tags
       .filter((tag) => tag[0] === 'page')

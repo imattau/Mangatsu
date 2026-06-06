@@ -23,6 +23,7 @@ describe('ChapterStep PDF import', () => {
           chapterTitle: '',
           chapterNumber: 1,
           pages: [],
+          pageDimensions: [],
           firstPageObjectUrl: null,
         }}
         onChange={onChange}
@@ -46,6 +47,10 @@ describe('ChapterStep PDF import', () => {
         new File(['webp-1'], 'Chapter 03 - The Beginning-page-001.webp', { type: 'image/webp' }),
         new File(['webp-2'], 'Chapter 03 - The Beginning-page-002.webp', { type: 'image/webp' }),
       ],
+      pageDimensions: [
+        { width: 800, height: 1200 },
+        { width: 800, height: 1200 },
+      ],
       firstPageObjectUrl: 'blob:first-page',
     })
 
@@ -54,14 +59,18 @@ describe('ChapterStep PDF import', () => {
     await waitFor(() => {
       expect(mockConvertPdfFileToWebpPages).toHaveBeenCalledWith(file)
       expect(onChange).toHaveBeenCalledWith(
-        expect.objectContaining({
-          chapterTitle: 'The Beginning',
-          chapterNumber: 3,
-          pages: expect.arrayContaining([
-            expect.objectContaining({ name: 'Chapter 03 - The Beginning-page-001.webp' }),
-          ]),
-          firstPageObjectUrl: 'blob:first-page',
-        }),
+          expect.objectContaining({
+            chapterTitle: 'The Beginning',
+            chapterNumber: 3,
+            pages: expect.arrayContaining([
+              expect.objectContaining({ name: 'Chapter 03 - The Beginning-page-001.webp' }),
+            ]),
+            pageDimensions: [
+              { width: 800, height: 1200 },
+              { width: 800, height: 1200 },
+            ],
+            firstPageObjectUrl: 'blob:first-page',
+          }),
       )
     })
   })

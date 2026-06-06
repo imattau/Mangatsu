@@ -25,6 +25,8 @@ interface BlossomImageProps {
   alt: string
   server?: string
   servers?: string[]
+  intrinsicWidth?: number
+  intrinsicHeight?: number
   className?: string
   style?: React.CSSProperties
   loading?: 'eager' | 'lazy'
@@ -33,11 +35,28 @@ interface BlossomImageProps {
 }
 
 export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(function BlossomImage(
-  { hash, alt, server, servers: explicitServers = [], className, style, loading = 'lazy', torrent, draggable = false },
+  {
+    hash,
+    alt,
+    server,
+    servers: explicitServers = [],
+    intrinsicWidth,
+    intrinsicHeight,
+    className,
+    style,
+    loading = 'lazy',
+    torrent,
+    draggable = false,
+  },
   ref,
 ) {
   const blossomServers = useBlossomStore((state) => state.servers)
   const cachedUrl = useBlossomStore((state) => state.cachedHashes[hash] ?? '')
+  const cachedDimensions = useBlossomStore((state) => state.cachedDimensions[hash] ?? null)
+  const setCachedDimensions = useBlossomStore((state) => state.setCachedDimensions)
+  const resolvedDimensions = intrinsicWidth && intrinsicHeight
+    ? { width: intrinsicWidth, height: intrinsicHeight }
+    : cachedDimensions
 
   const serverCandidates = useMemo(
     () => uniq([...explicitServers, ...blossomServers.map((s) => s.url), server, ...DEFAULT_BLOSSOM_SERVERS]),
@@ -157,15 +176,43 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
     [candidatesKey],
   )
 
+  const aspectRatio =
+    resolvedDimensions ? `${resolvedDimensions.width} / ${resolvedDimensions.height}` : undefined
+  const mergedStyle = useMemo(
+    () =>
+      aspectRatio
+        ? {
+            ...style,
+            aspectRatio,
+          }
+        : style,
+    [aspectRatio, style],
+  )
+
+  const handleLoad = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      if (intrinsicWidth && intrinsicHeight) return
+      const width = e.currentTarget.naturalWidth
+      const height = e.currentTarget.naturalHeight
+      if (width > 0 && height > 0) {
+        setCachedDimensions(hash, { width, height })
+      }
+    },
+    [hash, intrinsicHeight, intrinsicWidth, setCachedDimensions],
+  )
+
   return (
     <img
       ref={ref}
       src={resolvedSrc}
       alt={alt}
+      width={resolvedDimensions?.width}
+      height={resolvedDimensions?.height}
       loading={loading}
       className={className}
-      style={style}
+      style={mergedStyle}
       draggable={draggable}
+      onLoad={handleLoad}
       onError={handleError}
     />
   )

@@ -143,7 +143,7 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     for (const page of pages) {
       try {
         setPhase('converting')
-        const webpFile = await convertImageFileToWebp(page)
+        const { file: webpFile } = await convertImageFileToWebp(page)
         setPhase('uploading')
         const upload = await uploadToAll(webpFile, serverUrls)
         const torrentURI = await seedAssetTorrent(webpFile, upload.hash, upload.servers)
@@ -168,7 +168,7 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     if (coverSource) {
       try {
         setPhase('converting')
-        const webpFile = await convertImageFileToWebp(coverSource)
+        const { file: webpFile } = await convertImageFileToWebp(coverSource)
         setPhase('uploading')
         const upload = await uploadToAll(webpFile, serverUrls)
         const torrentURI =

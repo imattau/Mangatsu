@@ -106,6 +106,8 @@ export function PublishStep({
                     undefined,
                 }))
               : []
+        const pageDimensions =
+          chapter.pageDimensions.length > 0 ? chapter.pageDimensions : existingChapter?.pageDimensions ?? []
         if (existingChapter && existingChapter.dTag !== nextChapterDTag) {
           removeChapter(existingChapter.dTag)
           removeProgressForChapter(existingChapter.dTag)
@@ -118,6 +120,7 @@ export function PublishStep({
           parentDTag: draft.comicDTag,
           title: chapter.chapterTitle,
           pageHashes: pageArtifacts.map((upload) => upload.hash),
+          pageDimensions,
           blossomServer: pageArtifacts[0]?.servers[0] ?? existingChapter?.blossomServer ?? '',
           pageServers: pageArtifacts.map((upload) => upload.servers[0] ?? ''),
           pageServerLists: pageArtifacts.map((upload) => upload.servers),
