@@ -16,6 +16,7 @@ SKIP_BUILD=false
 SSH_TARGET=""
 SSH_LOGIN_USER=""
 SSH_CONTROL_PATH="${TMPDIR:-/tmp}/mangatsu-ssh-%C"
+REMOTE_STAGE_DIR="/tmp/${SERVICE_NAME}-deploy"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE_SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -109,6 +110,10 @@ run_remote() {
 }
 
 build_app() {
+	if [[ "$DRY_RUN" == true ]]; then
+		log "dry-run: skipping local build"
+		return
+	fi
 	if [[ "$SKIP_BUILD" == true ]]; then
 		log "skipping local build"
 		return
@@ -128,37 +133,20 @@ build_app() {
 }
 
 sync_app() {
-	log "syncing repository to ${SSH_TARGET}:${INSTALL_DIR}"
+	log "syncing repository to ${SSH_TARGET}:${REMOTE_STAGE_DIR}"
 	run_local rsync -az --delete --no-owner --no-group -e "ssh -p ${SSH_PORT} -o ControlMaster=auto -o ControlPersist=10m -o ControlPath=${SSH_CONTROL_PATH}" \
 		--exclude='.git' \
 		--exclude='.claude' \
 		--exclude='node_modules' \
 		--exclude='dist' \
 		--exclude='coverage' \
-		"${REPO_ROOT}/" "${SSH_TARGET}:${INSTALL_DIR}/"
+		"${REPO_ROOT}/" "${SSH_TARGET}:${REMOTE_STAGE_DIR}/"
 
 	if [[ -d "${REPO_ROOT}/dist" ]]; then
 		log "syncing build artifacts"
 		run_local rsync -az --delete --no-owner --no-group -e "ssh -p ${SSH_PORT} -o ControlMaster=auto -o ControlPersist=10m -o ControlPath=${SSH_CONTROL_PATH}" \
-			"${REPO_ROOT}/dist/" "${SSH_TARGET}:${INSTALL_DIR}/dist/"
+			"${REPO_ROOT}/dist/" "${SSH_TARGET}:${REMOTE_STAGE_DIR}/dist/"
 	fi
-}
-
-prepare_remote_install_dir() {
-	log "preparing remote install directory at ${INSTALL_DIR}"
-	local remote_cmd
-	remote_cmd="install -d -m 0755 '$INSTALL_DIR' && chown -R ${SSH_LOGIN_USER}:${SSH_LOGIN_USER} '$INSTALL_DIR'"
-	if [[ "$DRY_RUN" == true ]]; then
-		printf '[dry-run] ssh -tt -p %s -o ControlMaster=auto -o ControlPersist=10m -o ControlPath=%q %s sudo sh -lc %q\n' \
-			"$SSH_PORT" "$SSH_CONTROL_PATH" "$SSH_TARGET" "$remote_cmd"
-		return 0
-	fi
-	open_ssh_master
-	ssh -tt -p "$SSH_PORT" \
-		-o "ControlMaster=auto" \
-		-o "ControlPersist=10m" \
-		-o "ControlPath=${SSH_CONTROL_PATH}" \
-		"$SSH_TARGET" "sudo sh -lc $(printf '%q' "$remote_cmd")"
 }
 
 install_remote_service() {
@@ -167,13 +155,14 @@ install_remote_service() {
 set -Eeuo pipefail
 
 INSTALL_DIR="$1"
-SERVICE_NAME="$2"
-SERVICE_USER="$3"
-SERVICE_GROUP="$4"
-PORT="$5"
-PROXY_MODE="$6"
-DOMAIN="$7"
-CADDY_EMAIL="$8"
+STAGING_DIR="$2"
+SERVICE_NAME="$3"
+SERVICE_USER="$4"
+SERVICE_GROUP="$5"
+PORT="$6"
+PROXY_MODE="$7"
+DOMAIN="$8"
+CADDY_EMAIL="$9"
 
 log() {
 	printf '[remote] %s\n' "$*"
@@ -230,6 +219,9 @@ choose_port() {
 }
 
 verify_build_artifacts() {
+	if [[ "$DRY_RUN" == true ]]; then
+		return
+	fi
 	if [[ ! -f "${INSTALL_DIR}/dist/index.html" ]]; then
 		die "missing build artifact at ${INSTALL_DIR}/dist/index.html"
 	fi
@@ -253,6 +245,7 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required on the remote ser
 command -v systemctl >/dev/null 2>&1 || die "systemctl is required on the remote server"
 command -v ss >/dev/null 2>&1 || die "ss is required on the remote server"
 command -v curl >/dev/null 2>&1 || die "curl is required on the remote server"
+command -v rsync >/dev/null 2>&1 || die "rsync is required on the remote server"
 
 log "refreshing sudo credentials"
 sudo -v
@@ -270,6 +263,11 @@ fi
 if [[ "$proxy_mode_resolved" != "none" && -z "$DOMAIN" ]]; then
 	die "a domain is required when reverse proxying"
 fi
+
+log "preparing remote install directory at ${INSTALL_DIR}"
+sudo_run install -d -m 0755 "$INSTALL_DIR"
+sudo_run rsync -a --delete "$STAGING_DIR"/ "$INSTALL_DIR"/
+sudo_run chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "$INSTALL_DIR"
 
 write_managed_file() {
 	local target="$1"
@@ -485,9 +483,6 @@ configure_proxy() {
 }
 
 log "normalizing ownership"
-local_deploy_user="$(id -un)"
-sudo_run mkdir -p "$INSTALL_DIR"
-sudo_run chown -R "$local_deploy_user:$local_deploy_user" "$INSTALL_DIR"
 sudo_run chmod 0755 "$INSTALL_DIR"
 
 log "stopping existing service"
@@ -522,11 +517,13 @@ EOF
 	remote_script_file="$(mktemp)"
 	printf '%s\n' "$remote_script" >"$remote_script_file"
 	if [[ "$DRY_RUN" == true ]]; then
-		printf '[dry-run] scp -P %s -o ControlMaster=auto -o ControlPersist=10m -o ControlPath=%q %s %s:%s\n' \
-			"$SSH_PORT" "$remote_script_file" "$SSH_TARGET" "/tmp/${SERVICE_NAME}-deploy.sh"
-		printf '[dry-run] ssh -tt -p %s -o ControlMaster=auto -o ControlPersist=10m -o ControlPath=%q %s bash %s %q %q %q %q %q %q %q %q\n' \
-			"$SSH_PORT" "$SSH_TARGET" "/tmp/${SERVICE_NAME}-deploy.sh" \
-			"$INSTALL_DIR" "$SERVICE_NAME" "$SERVICE_USER" "$SERVICE_GROUP" "$PORT" "$PROXY_MODE" "$DOMAIN" "$CADDY_EMAIL"
+		local remote_args
+		printf -v remote_args '%q %q %q %q %q %q %q %q %q' \
+			"$INSTALL_DIR" "$REMOTE_STAGE_DIR" "$SERVICE_NAME" "$SERVICE_USER" "$SERVICE_GROUP" "$PORT" "$PROXY_MODE" "$DOMAIN" "$CADDY_EMAIL"
+		printf '[dry-run] scp -P %s -o ControlMaster=auto -o ControlPersist=10m -o ControlPath=%q %q %q:%q\n' \
+			"$SSH_PORT" "$SSH_CONTROL_PATH" "$remote_script_file" "$SSH_TARGET" "/tmp/${SERVICE_NAME}-deploy.sh"
+		printf '[dry-run] ssh -tt -p %s -o ControlMaster=auto -o ControlPersist=10m -o ControlPath=%q %q bash %q %s\n' \
+			"$SSH_PORT" "$SSH_CONTROL_PATH" "$SSH_TARGET" "/tmp/${SERVICE_NAME}-deploy.sh" "$remote_args"
 		rm -f "$remote_script_file"
 		return 0
 	fi
@@ -541,7 +538,7 @@ EOF
 		-o "ControlMaster=auto" \
 		-o "ControlPersist=10m" \
 		-o "ControlPath=${SSH_CONTROL_PATH}" \
-		"$SSH_TARGET" "bash /tmp/${SERVICE_NAME}-deploy.sh $(printf '%q ' "$INSTALL_DIR" "$SERVICE_NAME" "$SERVICE_USER" "$SERVICE_GROUP" "$PORT" "$PROXY_MODE" "$DOMAIN" "$CADDY_EMAIL")"
+		"$SSH_TARGET" "bash /tmp/${SERVICE_NAME}-deploy.sh $(printf '%q ' "$INSTALL_DIR" "$REMOTE_STAGE_DIR" "$SERVICE_NAME" "$SERVICE_USER" "$SERVICE_GROUP" "$PORT" "$PROXY_MODE" "$DOMAIN" "$CADDY_EMAIL")"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -636,7 +633,6 @@ command -v scp >/dev/null 2>&1 || die "scp is required"
 command -v npm >/dev/null 2>&1 || die "npm is required"
 
 build_app
-prepare_remote_install_dir
 sync_app
 install_remote_service
 
