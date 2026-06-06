@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEventStore, useObservableState } from 'applesauce-react/hooks'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
@@ -204,6 +204,8 @@ export function ComicDetailScreen() {
   const [offlineProgress, setOfflineProgress] = useState({ done: 0, total: 0 })
   const [offlineError, setOfflineError] = useState('')
   const [deletingChapterDTag, setDeletingChapterDTag] = useState('')
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
+  const actionsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -278,6 +280,28 @@ export function ComicDetailScreen() {
       cancelled = true
     }
   }, [comic, offlineTargetsKey])
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!actionsMenuRef.current) return
+      if (!actionsMenuRef.current.contains(event.target as Node)) {
+        setActionsMenuOpen(false)
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setActionsMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [])
 
   async function handleOfflineToggle() {
     if (!comic || offlineTargets.length === 0) {
@@ -439,19 +463,110 @@ export function ComicDetailScreen() {
     }
   }
 
+  function closeActionsMenu() {
+    setActionsMenuOpen(false)
+  }
+
+  function handleDeleteComicFromMenu() {
+    closeActionsMenu()
+    void handleDeleteComic()
+  }
+
+  function handleOfflineToggleFromMenu() {
+    closeActionsMenu()
+    void handleOfflineToggle()
+  }
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 py-4 text-zinc-100">
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-6">
+        <div className="flex items-start justify-between gap-3">
+          <Link
+            to="/"
+            className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
+          >
+            ← Library
+          </Link>
 
-        <Link
-          to="/"
-          className="self-start rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
-        >
-          ← Library
-        </Link>
+          {comic && (
+            <div ref={actionsMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setActionsMenuOpen((value) => !value)}
+                aria-label={actionsMenuOpen ? 'Close actions menu' : 'Open actions menu'}
+                aria-expanded={actionsMenuOpen}
+                aria-haspopup="menu"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/80 text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+              >
+                <HamburgerIcon open={actionsMenuOpen} />
+              </button>
+              {actionsMenuOpen && (
+                <div
+                  role="menu"
+                  aria-label="Comic actions"
+                  className="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl shadow-black/40"
+                >
+                  {comic.pubkey === myPubkey && (
+                    <Link
+                      to={`/comic/${comic.dTag}/edit`}
+                      role="menuitem"
+                      onClick={closeActionsMenu}
+                      className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
+                    >
+                      <PencilIcon />
+                      Edit details
+                    </Link>
+                  )}
+                  {comic && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleOfflineToggleFromMenu}
+                      disabled={offlineState === 'checking' || offlineState === 'downloading' || offlineState === 'removing'}
+                      className="flex w-full items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <OfflineIcon />
+                      {offlineState === 'available'
+                        ? 'Remove offline'
+                        : offlineState === 'downloading'
+                          ? `Caching ${offlineProgress.done}/${offlineProgress.total}`
+                          : offlineState === 'removing'
+                            ? 'Removing…'
+                            : offlineState === 'checking'
+                              ? 'Checking…'
+                              : 'Make offline'}
+                    </button>
+                  )}
+                  {comic.pubkey === myPubkey && (
+                    <Link
+                      to={`/comic/${comic.dTag}/upload`}
+                      role="menuitem"
+                      onClick={closeActionsMenu}
+                      className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
+                    >
+                      <PlusIcon />
+                      Add chapter
+                    </Link>
+                  )}
+                  {comic.pubkey === myPubkey && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleDeleteComicFromMenu}
+                      className="flex w-full items-center gap-2 px-4 py-3 text-sm text-red-300 transition hover:bg-red-950/40"
+                    >
+                      <TrashIcon />
+                      Delete comic
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {comic ? (
-          <header className="flex gap-4 items-end">
+          <header className="flex items-end gap-5">
               <CoverImage
                 hash={comic.coverHash}
                 server={server}
@@ -514,59 +629,6 @@ export function ComicDetailScreen() {
                     <span className="hidden sm:inline">{saved ? 'Unsave' : 'Save'}</span>
                   </button>
                 )}
-                {comic.pubkey === myPubkey && (
-                  <Link
-                    to={`/comic/${comic.dTag}/edit`}
-                    aria-label="Edit details"
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
-                  >
-                    <PencilIcon />
-                    <span className="hidden sm:inline">Edit details</span>
-                  </Link>
-                )}
-                {comic && (
-                  <button
-                    type="button"
-                    onClick={() => void handleOfflineToggle()}
-                    disabled={offlineState === 'checking' || offlineState === 'downloading' || offlineState === 'removing'}
-                    aria-label={offlineState === 'available' ? 'Remove offline comic' : 'Make comic available offline'}
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
-                  >
-                    <OfflineIcon />
-              <span className="hidden sm:inline">
-                      {offlineState === 'available'
-                        ? 'Remove offline'
-                        : offlineState === 'downloading'
-                          ? `Caching ${offlineProgress.done}/${offlineProgress.total}`
-                          : offlineState === 'removing'
-                            ? 'Removing…'
-                            : offlineState === 'checking'
-                              ? 'Checking…'
-                              : 'Make offline'}
-                    </span>
-                  </button>
-                )}
-                {comic.pubkey === myPubkey && (
-                  <Link
-                    to={`/comic/${comic.dTag}/upload`}
-                    aria-label="Add chapter"
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
-                  >
-                    <PlusIcon />
-                    <span className="hidden sm:inline">Add chapter</span>
-                  </Link>
-                )}
-                {comic.pubkey === myPubkey && (
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteComic()}
-                    className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300 transition hover:border-red-700 hover:text-red-200 sm:px-4"
-                    aria-label="Delete comic"
-                  >
-                    <TrashIcon />
-                    <span className="hidden sm:inline">Delete</span>
-                  </button>
-                )}
               </div>
               {addedToLibrary && (
                 <p className="mt-3 text-sm text-emerald-400">Added to your library</p>
@@ -586,76 +648,6 @@ export function ComicDetailScreen() {
           <header>
             <div className="h-6 w-40 rounded bg-zinc-800 animate-pulse" />
           </header>
-        )}
-
-        {blossomServers.length > 0 && (
-          <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
-            <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
-                  Blossom servers
-                </p>
-                <p className="mt-2 text-sm text-zinc-400">
-                  {isCheckingBlossomAssets
-                    ? 'Probing declared comic assets for reachability.'
-                    : allBlossomAssetsReachable
-                      ? 'All declared comic assets are reachable.'
-                      : 'Some declared comic assets are missing or partial.'}
-                </p>
-              </div>
-              <div
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                  isCheckingBlossomAssets
-                    ? 'border-zinc-700 bg-zinc-900/80 text-zinc-400'
-                    : allBlossomAssetsReachable
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                      : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                }`}
-              >
-                {isCheckingBlossomAssets ? 'Checking' : allBlossomAssetsReachable ? 'Available' : 'Incomplete'}
-              </div>
-            </summary>
-            <ul className="mt-3 space-y-2">
-              {blossomServers.map((entry) => {
-                const availability = blossomAvailability[entry.server]
-                const ready = availability?.status ?? 'checking'
-                return (
-                  <li
-                    key={entry.server}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-zinc-100">{entry.server}</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">
-                        {availability
-                          ? `${availability.ok}/${availability.total} assets reachable`
-                          : `${entry.assets.length} assets queued for check`}
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                        ready === 'available'
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                          : ready === 'partial'
-                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                            : ready === 'missing'
-                              ? 'border-red-500/30 bg-red-500/10 text-red-300'
-                              : 'border-zinc-700 bg-zinc-900/80 text-zinc-400'
-                      }`}
-                    >
-                      {ready === 'available'
-                        ? 'Available'
-                        : ready === 'partial'
-                          ? 'Partial'
-                          : ready === 'missing'
-                            ? 'Missing'
-                            : 'Checking'}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </details>
         )}
 
         {chapters.length === 0 ? (
@@ -740,6 +732,76 @@ export function ComicDetailScreen() {
           </section>
         )}
 
+        {blossomServers.length > 0 && (
+          <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+            <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                  Blossom servers
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  {isCheckingBlossomAssets
+                    ? 'Probing declared comic assets for reachability.'
+                    : allBlossomAssetsReachable
+                      ? 'All declared comic assets are reachable.'
+                      : 'Some declared comic assets are missing or partial.'}
+                </p>
+              </div>
+              <div
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  isCheckingBlossomAssets
+                    ? 'border-zinc-700 bg-zinc-900/80 text-zinc-400'
+                    : allBlossomAssetsReachable
+                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                      : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                }`}
+              >
+                {isCheckingBlossomAssets ? 'Checking' : allBlossomAssetsReachable ? 'Available' : 'Incomplete'}
+              </div>
+            </summary>
+            <ul className="mt-3 space-y-2">
+              {blossomServers.map((entry) => {
+                const availability = blossomAvailability[entry.server]
+                const ready = availability?.status ?? 'checking'
+                return (
+                  <li
+                    key={entry.server}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-zinc-100">{entry.server}</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        {availability
+                          ? `${availability.ok}/${availability.total} assets reachable`
+                          : `${entry.assets.length} assets queued for check`}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                        ready === 'available'
+                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                          : ready === 'partial'
+                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                            : ready === 'missing'
+                              ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                              : 'border-zinc-700 bg-zinc-900/80 text-zinc-400'
+                      }`}
+                    >
+                      {ready === 'available'
+                        ? 'Available'
+                        : ready === 'partial'
+                          ? 'Partial'
+                          : ready === 'missing'
+                            ? 'Missing'
+                            : 'Checking'}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          </details>
+        )}
+
         {comic && (
           <ComicCommentsSection comic={comic} comicEvent={comicEvent} />
         )}
@@ -766,7 +828,7 @@ function CoverImage({
   title: string
 }) {
   const className =
-    'aspect-[2/3] w-20 flex-shrink-0 rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
+    'aspect-[2/3] w-24 flex-shrink-0 rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20 sm:w-32'
   if (!hash) return <div className={className} />
   return (
     <BlossomImage
@@ -874,6 +936,39 @@ function LibraryPlusIcon() {
       <path d="M4 14h6" />
       <path d="M16 12v6" />
       <path d="M13 15h6" />
+    </svg>
+  )
+}
+
+function HamburgerIcon({ open }: { open: boolean }) {
+  return open ? (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M6 6l12 12" />
+      <path d="M18 6L6 18" />
+    </svg>
+  ) : (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4 shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h16" />
     </svg>
   )
 }

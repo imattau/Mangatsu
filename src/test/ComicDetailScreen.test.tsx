@@ -292,12 +292,17 @@ describe('ComicDetailScreen', () => {
     )
   })
 
-  it('shows an edit details action for the comic owner', () => {
+  it('shows an edit details action for the comic owner', async () => {
     setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
+    const user = userEvent.setup()
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
-    expect(screen.getByRole('link', { name: /edit details/i })).toHaveAttribute(
+    expect(screen.queryByRole('link', { name: /edit details/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /open actions menu/i }))
+
+    expect(screen.getByRole('menuitem', { name: /edit details/i })).toHaveAttribute(
       'href',
       '/comic/one-piece/edit',
     )
@@ -342,7 +347,8 @@ describe('ComicDetailScreen', () => {
     try {
       render(<ComicDetailScreen />, { wrapper: Wrapper })
 
-      await user.click(screen.getByRole('button', { name: /delete comic/i }))
+      await user.click(screen.getByRole('button', { name: /open actions menu/i }))
+      await user.click(screen.getByRole('menuitem', { name: /delete comic/i }))
 
       expect(mockEventFactoryBuild).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -383,12 +389,15 @@ describe('ComicDetailScreen', () => {
     )
   })
 
-  it('shows an add chapter action for owned comics', () => {
+  it('shows an add chapter action for owned comics', async () => {
     setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
+    const user = userEvent.setup()
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
-    expect(screen.getByRole('link', { name: /add chapter/i })).toHaveAttribute(
+    await user.click(screen.getByRole('button', { name: /open actions menu/i }))
+
+    expect(screen.getByRole('menuitem', { name: /add chapter/i })).toHaveAttribute(
       'href',
       '/comic/one-piece/upload',
     )
@@ -460,10 +469,11 @@ describe('ComicDetailScreen', () => {
     render(<ComicDetailScreen />, { wrapper: Wrapper })
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /make comic available offline/i })).toBeEnabled()
+      expect(screen.getByRole('button', { name: /open actions menu/i })).toBeEnabled()
     })
 
-    const button = screen.getByRole('button', { name: /make comic available offline/i })
+    await user.click(screen.getByRole('button', { name: /open actions menu/i }))
+    const button = screen.getByRole('menuitem', { name: /make offline/i })
     await user.click(button)
 
     expect(mockCacheTargetsForOffline).toHaveBeenCalledWith(
