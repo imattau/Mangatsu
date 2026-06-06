@@ -26,12 +26,14 @@ interface BlossomImageProps {
   server?: string
   servers?: string[]
   className?: string
+  style?: React.CSSProperties
   loading?: 'eager' | 'lazy'
   torrent?: string
+  draggable?: boolean
 }
 
 export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(function BlossomImage(
-  { hash, alt, server, servers: explicitServers = [], className, loading = 'lazy', torrent },
+  { hash, alt, server, servers: explicitServers = [], className, style, loading = 'lazy', torrent, draggable = false },
   ref,
 ) {
   const blossomServers = useBlossomStore((state) => state.servers)
@@ -162,6 +164,8 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
       alt={alt}
       loading={loading}
       className={className}
+      style={style}
+      draggable={draggable}
       onError={handleError}
     />
   )

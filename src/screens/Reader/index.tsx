@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useComicStore } from '@/stores/comicStore'
 import { useReadStore } from '@/stores/readStore'
 import { useBlossomStore } from '@/stores/blossomStore'
@@ -7,6 +7,7 @@ import { BoostButton } from '@/components/BoostButton'
 import { usePageObserver } from './usePageObserver'
 import { useProgressPublisher } from './useProgressPublisher'
 import { usePagePreloader } from './usePagePreloader'
+import { ZoomableReaderSurface } from './ZoomableReaderSurface'
 import { BlossomImage } from '@/components/BlossomImage'
 
 
@@ -18,6 +19,8 @@ function chapterNumber(dTag: string): number {
 export function ReaderScreen() {
   const { dTag, chapterId } = useParams<{ dTag: string; chapterId: string }>()
   const chapterDTag = chapterId ? decodeURIComponent(chapterId) : ''
+  const [searchParams, setSearchParams] = useSearchParams()
+  const fullscreen = searchParams.get('view') === 'full'
 
   const comic = useComicStore((s) => (dTag ? s.comics[dTag] ?? null : null))
   const chaptersForComic = useComicStore((s) => s.chaptersForComic)
@@ -119,7 +122,18 @@ export function ReaderScreen() {
   usePagePreloader(pageUrls, currentPage)
   useProgressPublisher(chapterDTag, currentPage)
 
-
+  const setFullscreenMode = useCallback(
+    async (nextFullscreen: boolean) => {
+      const nextSearchParams = new URLSearchParams(searchParams)
+      if (nextFullscreen) {
+        nextSearchParams.set('view', 'full')
+      } else {
+        nextSearchParams.delete('view')
+      }
+      setSearchParams(nextSearchParams, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
 
   if (!chapter) {
     return (
@@ -140,27 +154,74 @@ export function ReaderScreen() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-zinc-950 text-zinc-100">
-      {/* Header */}
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur">
-        <Link
-          to={`/comic/${dTag}`}
-          className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
-        >
-          ← Back
-        </Link>
-        <div className="flex-1 min-w-0 text-center">
-          <p className="truncate text-sm font-medium">{chapter.title}</p>
+    <div
+      className={
+        fullscreen
+          ? 'fixed inset-0 z-50 flex flex-col overflow-hidden bg-zinc-950 text-zinc-100'
+          : 'flex h-dvh flex-col overflow-hidden bg-zinc-950 text-zinc-100'
+      }
+    >
+      {!fullscreen ? (
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur">
+          <Link
+            to={`/comic/${dTag}`}
+            className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
+          >
+            ← Back
+          </Link>
+          <div className="flex-1 min-w-0 text-center">
+            <p className="truncate text-sm font-medium">{chapter.title}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void setFullscreenMode(true)
+              }}
+              className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
+            >
+              Fullscreen
+            </button>
+            <PageCounter current={currentPage} total={pageUrls.length} />
+          </div>
+        </header>
+      ) : (
+        <div className="pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 px-3 py-2 backdrop-blur">
+          <Link
+            to={`/comic/${dTag}`}
+            className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/80 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
+          >
+            Back
+          </Link>
+          <div className="pointer-events-none min-w-0 text-center">
+            <p className="truncate text-sm font-medium">{chapter.title}</p>
+            <p className="text-[11px] text-zinc-400">{currentPage} / {pageUrls.length}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              void setFullscreenMode(false)
+            }}
+            className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/80 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
+          >
+            Exit
+          </button>
         </div>
-        <PageCounter current={currentPage} total={pageUrls.length} />
-      </header>
+      )}
 
       {/* Pages */}
       <main
         ref={scrollContainerRef}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain snap-y snap-proximity touch-pan-y md:snap-none"
+        className={
+          fullscreen
+            ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain snap-y snap-proximity touch-pan-y md:snap-none pt-16 pb-20'
+            : 'flex-1 min-h-0 overflow-y-auto overscroll-contain snap-y snap-proximity touch-pan-y md:snap-none'
+        }
       >
-        <div className="mx-auto max-w-2xl">
+        <ZoomableReaderSurface
+          className={fullscreen ? 'mx-auto max-w-5xl' : 'mx-auto max-w-2xl'}
+          resetKey={chapterDTag}
+        >
           {pageUrls.map((page, idx) => (
             <BlossomImage
               key={page.hash}
@@ -176,42 +237,70 @@ export function ReaderScreen() {
               loading={page.isCached || idx === 0 ? 'eager' : 'lazy'}
             />
           ))}
-        </div>
+        </ZoomableReaderSurface>
       </main>
 
-      {/* Chapter navigation */}
-      <nav className="flex items-center justify-between border-t border-zinc-800 px-4 py-6">
-        {prevChapter ? (
-          <Link
-            to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}`}
-            className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
-          >
-            ← Prev
-          </Link>
-        ) : (
-          <span />
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          {comic ? (
-            <BoostButton
-              comic={comic}
-              comicUrl={comicUrl}
-              appOrigin={appOrigin}
-              blossomServers={activeBlossomServers}
-            />
-          ) : null}
-          {nextChapter ? (
+      {fullscreen ? (
+        <div className="absolute bottom-3 left-3 right-3 z-20 flex items-center justify-between gap-3">
+          <div>
+            {prevChapter ? (
+              <Link
+                to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}?view=full`}
+                className="rounded-xl border border-white/10 bg-zinc-950/80 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
+              >
+                ← Prev
+              </Link>
+            ) : (
+              <span />
+            )}
+          </div>
+          <div>
+            {nextChapter ? (
+              <Link
+                to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}?view=full`}
+                className="rounded-xl border border-white/10 bg-zinc-950/80 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
+              >
+                Next →
+              </Link>
+            ) : (
+              <span />
+            )}
+          </div>
+        </div>
+      ) : (
+        <nav className="flex items-center justify-between border-t border-zinc-800 px-4 py-6">
+          {prevChapter ? (
             <Link
-              to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}`}
+              to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}`}
               className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
             >
-              Next →
+              ← Prev
             </Link>
           ) : (
             <span />
           )}
-        </div>
-      </nav>
+          <div className="ml-auto flex items-center gap-2">
+            {comic ? (
+              <BoostButton
+                comic={comic}
+                comicUrl={comicUrl}
+                appOrigin={appOrigin}
+                blossomServers={activeBlossomServers}
+              />
+            ) : null}
+            {nextChapter ? (
+              <Link
+                to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}`}
+                className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
+              >
+                Next →
+              </Link>
+            ) : (
+              <span />
+            )}
+          </div>
+        </nav>
+      )}
     </div>
   )
 }

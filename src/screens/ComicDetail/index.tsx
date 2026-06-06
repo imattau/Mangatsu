@@ -605,7 +605,7 @@ export function ComicDetailScreen() {
         </div>
 
         {comic ? (
-          <header className="flex items-end gap-5">
+          <header className="flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:gap-5">
               <CoverImage
                 hash={comic.coverHash}
                 server={server}
@@ -613,7 +613,7 @@ export function ComicDetailScreen() {
                 torrent={comic.coverTorrent}
                 title={comic.title}
               />
-            <div className="flex-1 min-w-0">
+            <div className="w-full min-w-0 sm:flex-1">
               <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">
                 {comic.author || 'Unknown author'}
               </p>
@@ -891,7 +891,7 @@ function CoverImage({
   title: string
 }) {
   const className =
-    'aspect-[2/3] w-24 flex-shrink-0 rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20 sm:w-32'
+    'aspect-[2/3] w-28 flex-shrink-0 rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20 sm:w-32'
   if (!hash) return <div className={className} />
   return (
     <BlossomImage

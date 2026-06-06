@@ -1,4 +1,7 @@
 import { render, screen, act, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { forwardRef } from 'react'
+import type { Ref } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ReaderScreen } from '../screens/Reader'
@@ -57,6 +60,40 @@ const mockProgress: Record<string, ReadingProgress> = {}
 let mockSetProgress = vi.fn()
 let mockPrimaryServer = vi.fn(() => 'https://blossom.example')
 let mockCachedHashes: Record<string, string> = {}
+const mockBlossomImage = vi.fn(
+  ({
+    hash,
+    server,
+    servers,
+    torrent,
+    alt,
+    loading,
+    className,
+    ref,
+  }: {
+    hash: string
+    server?: string
+    servers?: string[]
+    torrent?: string
+    alt: string
+    loading?: 'eager' | 'lazy'
+    className?: string
+    ref?: Ref<HTMLImageElement>
+  }) => (
+    <img
+      ref={ref}
+      alt={alt}
+      loading={loading}
+      className={className}
+      data-testid="blossom-image"
+      data-hash={hash}
+      data-server={server ?? ''}
+      data-servers={(servers ?? []).join(',')}
+      data-torrent={torrent ?? ''}
+      src={`https://blossom.example/${hash}`}
+    />
+  ),
+)
 
 // Mutable nostr service stubs — replaced in publish tests
 let mockBuildFn = vi.fn().mockResolvedValue({ kind: 30301, tags: [], content: '', created_at: 0, pubkey: '' })
@@ -65,18 +102,6 @@ let mockPublishFn = vi.fn()
 let mockActiveAccount: { signer: { signEvent: ReturnType<typeof vi.fn> } } | null = {
   signer: { signEvent: mockSignFn },
 }
-const mockBlossomImage = vi.fn(
-  ({ hash, torrent, alt }: { hash: string; torrent?: string; alt: string }) => (
-    <img
-      data-testid="blossom-image"
-      data-hash={hash}
-      data-torrent={torrent ?? ''}
-      alt={alt}
-      src={`https://blossom.example/${hash}`}
-    />
-  ),
-)
-
 vi.mock('../stores/comicStore', () => ({
   useComicStore: (sel: (s: {
     comics: Record<string, Comic>
@@ -131,15 +156,37 @@ vi.mock('../context/NostrContext', () => ({
   }),
 }))
 
-vi.mock('../components/BlossomImage', () => ({
-  BlossomImage: (props: { hash: string; torrent?: string; alt: string }) => mockBlossomImage(props),
-}))
+vi.mock('../components/BlossomImage', async () => {
+  const actual = await vi.importActual<typeof import('../components/BlossomImage')>('../components/BlossomImage')
+  return {
+    ...actual,
+    BlossomImage: forwardRef<
+      HTMLImageElement,
+      {
+        hash: string
+        server?: string
+        servers?: string[]
+        torrent?: string
+        alt: string
+        loading?: 'eager' | 'lazy'
+        className?: string
+      }
+    >((props, ref) => {
+      mockBlossomImage({ ...props, ref })
+      return <actual.BlossomImage ref={ref} {...props} />
+    }),
+  }
+})
 
 // ── Render helper ────────────────────────────────────────────────────────────
 
-function renderReader(dTag = 'one-piece', chapterId = encodeURIComponent('one-piece/chapter-1')) {
+function renderReader(
+  dTag = 'one-piece',
+  chapterId = encodeURIComponent('one-piece/chapter-1'),
+  search = '',
+) {
   return render(
-    <MemoryRouter initialEntries={[`/comic/${dTag}/chapter/${chapterId}`]}>
+    <MemoryRouter initialEntries={[`/comic/${dTag}/chapter/${chapterId}${search}`]}>
       <Routes>
         <Route path="/comic/:dTag/chapter/:chapterId" element={<ReaderScreen />} />
         <Route path="/comic/:dTag" element={<div data-testid="comic-detail" />} />
@@ -180,7 +227,6 @@ describe('ReaderScreen — page rendering', () => {
     mockBuildFn.mockClear()
     mockPublishFn.mockClear()
     mockBlossomImage.mockClear()
-
     class MockImage {
       onload: null | (() => void) = null
       onerror: null | (() => void) = null
@@ -381,6 +427,27 @@ describe('ReaderScreen — page rendering', () => {
       'href',
       '/comic/one-piece',
     )
+  })
+
+  it('enters fullscreen layout from the toolbar button', async () => {
+    const user = userEvent.setup()
+    const { container } = renderReader()
+
+    await user.click(screen.getByRole('button', { name: /fullscreen/i }))
+
+    expect(container.querySelector('header')).toBeNull()
+    expect(container.querySelector('nav')).toBeNull()
+    expect(screen.getByRole('button', { name: /exit/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /boost comic/i })).not.toBeInTheDocument()
+  })
+
+  it('starts in fullscreen layout from the query string', () => {
+    const { container } = renderReader('one-piece', encodeURIComponent('one-piece/chapter-1'), '?view=full')
+
+    expect(container.querySelector('header')).toBeNull()
+    expect(container.querySelector('nav')).toBeNull()
+    expect(screen.getByRole('button', { name: /exit/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /fullscreen/i })).not.toBeInTheDocument()
   })
 })
 
