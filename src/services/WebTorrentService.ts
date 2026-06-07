@@ -13,6 +13,7 @@ export class WebTorrentService {
   private client: WebTorrentInstance | null = null
   private clientPromise: Promise<WebTorrentInstance> | null = null
   private torrents = new Map<string, WebTorrentTorrent>()
+  private pendingTorrents = new Map<string, Promise<WebTorrentTorrent>>()
   private objectUrls = new Set<string>()
   private activeQueue: string[] = []
   private readonly MAX_ACTIVE_TORRENTS = 3
@@ -140,15 +141,22 @@ export class WebTorrentService {
 
     let torrent = this.torrents.get(torrentId)
     if (!torrent) {
-      torrent = await new Promise<WebTorrentTorrent>((resolve, reject) => {
-        const t = client.add(torrentId, { announce: this.getTrackers() }, (torrentInstance) => {
-          resolve(torrentInstance as WebTorrentTorrent)
+      let promise = this.pendingTorrents.get(torrentId)
+      if (!promise) {
+        promise = new Promise<WebTorrentTorrent>((resolve, reject) => {
+          const t = client.add(torrentId, { announce: this.getTrackers() }, (torrentInstance) => {
+            this.pendingTorrents.delete(torrentId)
+            this.registerTorrent(torrentId, torrentInstance as WebTorrentTorrent)
+            resolve(torrentInstance as WebTorrentTorrent)
+          })
+          t.on('error', (err) => {
+            this.pendingTorrents.delete(torrentId)
+            reject(err)
+          })
         })
-        t.on('error', (err) => {
-          reject(err)
-        })
-      })
-      this.registerTorrent(torrentId, torrent)
+        this.pendingTorrents.set(torrentId, promise)
+      }
+      torrent = await promise
     } else {
       // Refresh its position in LRU queue
       this.activeQueue = this.activeQueue.filter((id) => id !== torrentId)
@@ -244,6 +252,7 @@ export class WebTorrentService {
     }
     this.objectUrls.clear()
     this.resolvedBlobUrls.clear()
+    this.pendingTorrents.clear()
 
     if (this.client) {
       this.client.destroy()
