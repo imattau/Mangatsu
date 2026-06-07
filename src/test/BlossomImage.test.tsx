@@ -58,7 +58,7 @@ describe('BlossomImage WebTorrent Integration', () => {
       )
     })
 
-    expect(getFileSpy).toHaveBeenCalledWith('magnet:?xt=urn:btih:dummy', 'page-hash')
+    expect(getFileSpy).toHaveBeenCalledWith('magnet:?xt=urn:btih:dummy', 'page-hash', expect.any(AbortSignal))
     expect(createObjectURLMock).toHaveBeenCalledWith(mockBlob)
     const img = screen.getByAltText('Page Image')
     expect(img).toHaveAttribute('src', 'blob:dummy-url')
