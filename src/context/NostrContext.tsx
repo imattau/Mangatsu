@@ -147,13 +147,14 @@ export function NostrProvider({ children }: PropsWithChildren) {
           try {
             const account = NostrConnectAccount.fromJSON(accountData)
             const existing = service.accountManager.getAccountForPubkey(account.pubkey)
-            const restored = existing ?? account
-            if (!existing) {
+            if (existing) {
+              service.accountManager.replaceAccount(existing, account)
+            } else {
               service.accountManager.addAccount(account)
             }
-            service.accountManager.setActive(restored)
-            if (!cancelled && (pubkey !== restored.pubkey || method !== resolvedMethod)) {
-              setAuth(restored.pubkey, resolvedMethod, accountData)
+            service.accountManager.setActive(account)
+            if (!cancelled && (pubkey !== account.pubkey || method !== resolvedMethod)) {
+              setAuth(account.pubkey, resolvedMethod, accountData)
             }
             return
           } catch {
@@ -177,13 +178,14 @@ export function NostrProvider({ children }: PropsWithChildren) {
         try {
           const account = PrivateKeyAccount.fromKey(stored)
           const existing = service.accountManager.getAccountForPubkey(account.pubkey)
-          const active = existing ?? account
-          if (!existing) {
+          if (existing) {
+            service.accountManager.replaceAccount(existing, account)
+          } else {
             service.accountManager.addAccount(account)
           }
-          service.accountManager.setActive(active)
-          if (!cancelled && (pubkey !== active.pubkey || method !== 'nsec')) {
-            setAuth(active.pubkey, 'nsec')
+          service.accountManager.setActive(account)
+          if (!cancelled && (pubkey !== account.pubkey || method !== 'nsec')) {
+            setAuth(account.pubkey, 'nsec')
           }
         } catch {
           sessionStorage.removeItem(NSEC_SESSION_KEY)

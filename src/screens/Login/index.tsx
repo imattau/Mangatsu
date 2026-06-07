@@ -33,16 +33,13 @@ async function commitLogin(
   accountData: SerializedAccount<NostrConnectAccountSignerData> | null = null,
 ) {
   const existing = service.accountManager.getAccountForPubkey(account.pubkey)
-  const active = existing ?? account
-  if (!existing) {
+  if (existing) {
+    service.accountManager.replaceAccount(existing, account)
+  } else {
     service.accountManager.addAccount(account)
   }
-  service.accountManager.setActive(active)
-  setAuth(
-    active.pubkey,
-    method,
-    accountData,
-  )
+  service.accountManager.setActive(account)
+  setAuth(account.pubkey, method, accountData)
 }
 
 export function LoginScreen() {

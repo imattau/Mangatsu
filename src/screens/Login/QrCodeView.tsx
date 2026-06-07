@@ -54,12 +54,13 @@ export function QrCodeView({ onSuccess: onSuccessProp, onCancel }: Props) {
 
         const account = new NostrConnectAccount(pubkey, signer)
         const existing = service.accountManager.getAccountForPubkey(account.pubkey)
-        const active = existing ?? account
-        if (!existing) {
+        if (existing) {
+          service.accountManager.replaceAccount(existing, account)
+        } else {
           service.accountManager.addAccount(account)
         }
-        service.accountManager.setActive(active)
-        onSuccess(active.pubkey, account.toJSON())
+        service.accountManager.setActive(account)
+        onSuccess(account.pubkey, account.toJSON())
       } catch {
         if (!cancelled) {
           setError('QR connection failed. Try again.')
