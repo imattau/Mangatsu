@@ -55,17 +55,7 @@ export function SettingsScreen() {
   const [isWebTorrentOpen, setIsWebTorrentOpen] = useState(false)
   const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null)
   
-  const [stats, setStats] = useState(() => webTorrentService.getStats())
 
-  useEffect(() => {
-    if (!enableWebTorrent) return
-
-    const interval = setInterval(() => {
-      setStats(webTorrentService.getStats())
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [enableWebTorrent])
 
   useEffect(() => {
     let cancelled = false
@@ -406,30 +396,7 @@ export function SettingsScreen() {
               />
             </label>
 
-            {enableWebTorrent && (
-              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-900 pt-4 text-xs">
-                <div className="rounded-xl border border-zinc-900 bg-zinc-900/20 p-3">
-                  <p className="text-zinc-500 uppercase tracking-wider text-[0.6rem]">Active Torrents</p>
-                  <p className="mt-1 font-mono text-sm font-semibold text-zinc-200">{stats.activeTorrents}</p>
-                </div>
-                <div className="rounded-xl border border-zinc-900 bg-zinc-900/20 p-3">
-                  <p className="text-zinc-500 uppercase tracking-wider text-[0.6rem]">Connected Peers</p>
-                  <p className="mt-1 font-mono text-sm font-semibold text-zinc-200">{stats.numPeers}</p>
-                </div>
-                <div className="rounded-xl border border-zinc-900 bg-zinc-900/20 p-3">
-                  <p className="text-zinc-500 uppercase tracking-wider text-[0.6rem]">Download Speed</p>
-                  <p className="mt-1 font-mono text-sm font-semibold text-zinc-200">
-                    {(stats.downloadSpeed / 1024).toFixed(1)} KB/s
-                  </p>
-                </div>
-                <div className="rounded-xl border border-zinc-900 bg-zinc-900/20 p-3">
-                  <p className="text-zinc-500 uppercase tracking-wider text-[0.6rem]">Upload Speed</p>
-                  <p className="mt-1 font-mono text-sm font-semibold text-zinc-200">
-                    {(stats.uploadSpeed / 1024).toFixed(1)} KB/s
-                  </p>
-                </div>
-              </div>
-            )}
+
           </div>
         </section>
       </div>

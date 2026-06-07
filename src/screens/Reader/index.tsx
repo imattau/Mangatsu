@@ -9,6 +9,7 @@ import { usePagePreloader } from './usePagePreloader'
 import { ZoomableReaderSurface } from './ZoomableReaderSurface'
 import { BlossomImage } from '@/components/BlossomImage'
 import { webTorrentService } from '@/services/WebTorrentService'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 
 function chapterNumber(dTag: string): number {
@@ -102,6 +103,8 @@ export function ReaderScreen() {
 
   const [currentPage, setCurrentPage] = useState(1)
   const savedPage = useReadStore((s) => s.progress[chapterDTag]?.page ?? 1)
+  const enableWebTorrent = useSettingsStore((s) => s.enableWebTorrent)
+  const [stats, setStats] = useState(() => webTorrentService.getStats())
 
   useEffect(() => {
     setCurrentPage(savedPage)
@@ -112,6 +115,16 @@ export function ReaderScreen() {
       webTorrentService.cleanupAll()
     }
   }, [chapterDTag])
+
+  useEffect(() => {
+    if (!enableWebTorrent) return
+
+    const interval = setInterval(() => {
+      setStats(webTorrentService.getStats())
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [enableWebTorrent])
 
   // One ref per page — stable across renders (keyed by pageUrls.length)
   const pageRefs = useMemo(
@@ -260,63 +273,95 @@ export function ReaderScreen() {
       </main>
 
       {fullscreen ? (
-        <div className="absolute bottom-3 left-3 right-3 z-20 flex items-center justify-between gap-3">
-          <div>
+        <div className="absolute bottom-3 left-3 right-3 z-20 flex flex-col gap-2">
+          {enableWebTorrent && stats.activeTorrents > 0 && (
+            <div className="mx-auto rounded-full bg-zinc-950/80 px-3 py-1 text-[0.65rem] text-zinc-400 font-mono backdrop-blur flex gap-3 shadow-lg border border-white/5">
+              <span className="flex items-center gap-1">
+                <span className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+                Torrents: {stats.activeTorrents}
+              </span>
+              <span>Peers: {stats.numPeers}</span>
+              <span>DL: {(stats.downloadSpeed / 1024).toFixed(1)} KB/s</span>
+              <span>UL: {(stats.uploadSpeed / 1024).toFixed(1)} KB/s</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              {prevChapter ? (
+                <Link
+                  to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}?view=full`}
+                  className="rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
+                >
+                  ← Prev
+                </Link>
+              ) : (
+                <span />
+              )}
+            </div>
+            <div>
+              {nextChapter ? (
+                <Link
+                  to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}?view=full`}
+                  className="rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
+                >
+                  Next →
+                </Link>
+              ) : (
+                <span />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <nav className="flex flex-col gap-4 border-t border-zinc-800 px-4 py-6">
+          {enableWebTorrent && stats.activeTorrents > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[0.7rem] text-zinc-500 font-mono">
+              <span className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Active Torrents: <strong className="text-zinc-400">{stats.activeTorrents}</strong>
+              </span>
+              <span>
+                Peers: <strong className="text-zinc-400">{stats.numPeers}</strong>
+              </span>
+              <span>
+                DL: <strong className="text-zinc-400">{(stats.downloadSpeed / 1024).toFixed(1)} KB/s</strong>
+              </span>
+              <span>
+                UL: <strong className="text-zinc-400">{(stats.uploadSpeed / 1024).toFixed(1)} KB/s</strong>
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
             {prevChapter ? (
               <Link
-                to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}?view=full`}
-                className="rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
+                to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}`}
+                className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
               >
                 ← Prev
               </Link>
             ) : (
               <span />
             )}
-          </div>
-          <div>
-            {nextChapter ? (
-              <Link
-                to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}?view=full`}
-                className="rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
-              >
-                Next →
-              </Link>
-            ) : (
-              <span />
-            )}
-          </div>
-        </div>
-      ) : (
-        <nav className="flex items-center justify-between border-t border-zinc-800 px-4 py-6">
-          {prevChapter ? (
-            <Link
-              to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}`}
-              className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
-            >
-              ← Prev
-            </Link>
-          ) : (
-            <span />
-          )}
-          <div className="ml-auto flex items-center gap-2">
-            {comic ? (
-              <BoostButton
-                comic={comic}
-                comicUrl={comicUrl}
-                appOrigin={appOrigin}
-                blossomServers={activeBlossomServers}
-              />
-            ) : null}
-            {nextChapter ? (
-              <Link
-                to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}`}
-                className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
-              >
-                Next →
-              </Link>
-            ) : (
-              <span />
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              {comic ? (
+                <BoostButton
+                  comic={comic}
+                  comicUrl={comicUrl}
+                  appOrigin={appOrigin}
+                  blossomServers={activeBlossomServers}
+                />
+              ) : null}
+              {nextChapter ? (
+                <Link
+                  to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}`}
+                  className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
+                >
+                  Next →
+                </Link>
+              ) : (
+                <span />
+              )}
+            </div>
           </div>
         </nav>
       )}
