@@ -9,6 +9,7 @@ import type {
 } from 'applesauce-accounts/accounts'
 import { useNostr } from '@/context/NostrContext'
 import { BrandMark } from '@/components/BrandMark'
+import { buildRemoteSignerPermissions } from '@/lib/remoteSigner'
 import { useAuthStore } from '@/stores/authStore'
 import { QrCodeView } from './QrCodeView'
 
@@ -100,7 +101,7 @@ export function LoginScreen() {
         import('applesauce-accounts/accounts'),
       ])
       const signer = await NostrConnectSigner.fromBunkerURI(bunkerValue.trim(), {
-        permissions: NostrConnectSigner.buildSigningPermissions([0, 1, 3]),
+        permissions: buildRemoteSignerPermissions(),
       })
       const pubkey = await signer.getPublicKey()
       const account = new NostrConnectAccount(pubkey, signer)
