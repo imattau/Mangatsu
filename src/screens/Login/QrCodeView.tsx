@@ -5,9 +5,7 @@ import { NostrConnectAccount } from 'applesauce-accounts/accounts'
 import type { NostrConnectAccountSignerData } from 'applesauce-accounts/accounts'
 import { NostrConnectSigner, PrivateKeySigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
-import { buildRemoteSignerPermissions } from '@/lib/remoteSigner'
-
-const CONNECT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol']
+import { buildRemoteSignerPermissions, buildRemoteSignerRelays } from '@/lib/remoteSigner'
 
 interface Props {
   onSuccess: (
@@ -31,7 +29,7 @@ export function QrCodeView({ onSuccess: onSuccessProp, onCancel }: Props) {
       try {
         const localSigner = new PrivateKeySigner()
         signer = new NostrConnectSigner({
-          relays: CONNECT_RELAYS,
+          relays: buildRemoteSignerRelays(),
           signer: localSigner,
         })
 

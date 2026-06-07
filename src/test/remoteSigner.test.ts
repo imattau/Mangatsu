@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildRemoteSignerPermissions } from '../lib/remoteSigner'
+import { buildRemoteSignerPermissions, buildRemoteSignerRelays } from '../lib/remoteSigner'
 
 describe('remote signer permissions', () => {
   it('includes the event kinds Mangatsu signs with remote accounts', () => {
@@ -18,5 +18,14 @@ describe('remote signer permissions', () => {
         expect.stringContaining(':10063'),
       ]),
     )
+  })
+
+  it('includes fallback relays for remote signer connections', () => {
+    expect(buildRemoteSignerRelays(['wss://relay.damus.io'])).toEqual([
+      'wss://relay.damus.io',
+      'wss://relay.primal.net',
+      'wss://nos.lol',
+      'wss://relay.nostr.band',
+    ])
   })
 })

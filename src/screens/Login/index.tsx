@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { SerializedAccount } from 'applesauce-accounts'
 import type {
@@ -7,9 +7,10 @@ import type {
   PrivateKeyAccount,
   NostrConnectAccountSignerData,
 } from 'applesauce-accounts/accounts'
+import { NostrConnectSigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
 import { BrandMark } from '@/components/BrandMark'
-import { buildRemoteSignerPermissions } from '@/lib/remoteSigner'
+import { buildRemoteSignerPermissions, buildRemoteSignerRelays } from '@/lib/remoteSigner'
 import { useAuthStore } from '@/stores/authStore'
 import { QrCodeView } from './QrCodeView'
 
@@ -19,6 +20,12 @@ type ActiveMethod = 'none' | 'nsec' | 'bunker' | 'qr'
 
 function hasNostrExtension() {
   return typeof window !== 'undefined' && Boolean((window as Window & { nostr?: unknown }).nostr)
+}
+
+interface BunkerSession {
+  uri: string
+  signer: NostrConnectSigner
+  connectPromise: Promise<unknown> | null
 }
 
 async function commitLogin(
@@ -47,11 +54,19 @@ export function LoginScreen() {
   const navigate = useNavigate()
   const setAuth = useAuthStore((state) => state.setAuth)
   const clearAuth = useAuthStore((state) => state.clearAuth)
+  const bunkerSessionRef = useRef<BunkerSession | null>(null)
   const [activeMethod, setActiveMethod] = useState<ActiveMethod>('none')
   const [nsecValue, setNsecValue] = useState('')
   const [bunkerValue, setBunkerValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    return () => {
+      void bunkerSessionRef.current?.signer.close()
+      bunkerSessionRef.current = null
+    }
+  }, [])
 
   async function handleExtension() {
     setError(null)
@@ -93,15 +108,41 @@ export function LoginScreen() {
     setError(null)
     setLoading(true)
     try {
-      const [{ NostrConnectSigner }, { NostrConnectAccount }] = await Promise.all([
-        import('applesauce-signers'),
-        import('applesauce-accounts/accounts'),
-      ])
-      const signer = await NostrConnectSigner.fromBunkerURI(bunkerValue.trim(), {
-        permissions: buildRemoteSignerPermissions(),
-      })
-      const pubkey = await signer.getPublicKey()
-      const account = new NostrConnectAccount(pubkey, signer)
+      const bunkerUri = bunkerValue.trim()
+      const { remote, relays, secret } = NostrConnectSigner.parseBunkerURI(bunkerUri)
+      const { NostrConnectAccount } = await import('applesauce-accounts/accounts')
+      const existingSession = bunkerSessionRef.current
+      let session = existingSession
+
+      if (!session || session.uri !== bunkerUri) {
+        if (session) {
+          void session.signer.close()
+        }
+        session = {
+          uri: bunkerUri,
+          signer: new NostrConnectSigner({
+            remote,
+            relays: buildRemoteSignerRelays(relays),
+          }),
+          connectPromise: null,
+        }
+        bunkerSessionRef.current = session
+      }
+
+      if (!session.signer.isConnected) {
+        if (!session.connectPromise) {
+          session.connectPromise = session.signer.connect(secret, buildRemoteSignerPermissions())
+        }
+
+        try {
+          await session.connectPromise
+        } finally {
+          session.connectPromise = null
+        }
+      }
+
+      const pubkey = await session.signer.getPublicKey()
+      const account = new NostrConnectAccount(pubkey, session.signer)
       await commitLogin(account, 'bunker', service, setAuth, account.toJSON())
       navigate('/')
     } catch (cause) {
@@ -116,6 +157,8 @@ export function LoginScreen() {
       setNsecValue('')
     }
     if (method === 'bunker') {
+      void bunkerSessionRef.current?.signer.close()
+      bunkerSessionRef.current = null
       setBunkerValue('')
     }
     setActiveMethod('none')
