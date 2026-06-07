@@ -8,6 +8,7 @@ import { useProgressPublisher } from './useProgressPublisher'
 import { usePagePreloader } from './usePagePreloader'
 import { ZoomableReaderSurface } from './ZoomableReaderSurface'
 import { BlossomImage } from '@/components/BlossomImage'
+import { webTorrentService } from '@/services/WebTorrentService'
 
 
 function chapterNumber(dTag: string): number {
@@ -105,6 +106,12 @@ export function ReaderScreen() {
   useEffect(() => {
     setCurrentPage(savedPage)
   }, [chapterDTag, savedPage])
+
+  useEffect(() => {
+    return () => {
+      webTorrentService.cleanupAll()
+    }
+  }, [chapterDTag])
 
   // One ref per page — stable across renders (keyed by pageUrls.length)
   const pageRefs = useMemo(

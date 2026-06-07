@@ -97,7 +97,6 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
   useEffect(() => {
     let cancelled = false
     let objectUrl = ''
-    const abortController = new AbortController()
 
     // Only reset to placeholder if we don't have a cached version ready in memory
     const existing = webTorrentService.getResolvedBlobUrl(hash)
@@ -115,12 +114,9 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
       if (torrent) {
         try {
           // Add a 1.5-second timeout for WebTorrent resolution (metadata & file fetching)
-          const torrentPromise = webTorrentService.getFile(torrent, hash, abortController.signal)
+          const torrentPromise = webTorrentService.getFile(torrent, hash)
           const timeoutPromise = new Promise<Blob>((_, reject) =>
-            setTimeout(() => {
-              abortController.abort()
-              reject(new Error('WebTorrent timed out'))
-            }, 1500)
+            setTimeout(() => reject(new Error('WebTorrent timed out')), 1500)
           )
           
           const blob = await Promise.race([torrentPromise, timeoutPromise])
@@ -159,7 +155,6 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
 
     return () => {
       cancelled = true
-      abortController.abort()
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl)
       }

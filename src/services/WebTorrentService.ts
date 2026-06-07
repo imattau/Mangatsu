@@ -14,11 +14,9 @@ export class WebTorrentService {
   private clientPromise: Promise<WebTorrentInstance> | null = null
   private torrents = new Map<string, WebTorrentTorrent>()
   private pendingTorrents = new Map<string, Promise<WebTorrentTorrent>>()
-  private pendingCounts = new Map<string, number>()
-  private pendingInstances = new Map<string, WebTorrentTorrent>()
   private objectUrls = new Set<string>()
   private activeQueue: string[] = []
-  private readonly MAX_ACTIVE_TORRENTS = 3
+  private readonly MAX_ACTIVE_TORRENTS = 50
 
   private createMockTorrent(): WebTorrentTorrent {
     const torrent = {
@@ -131,13 +129,9 @@ export class WebTorrentService {
     }
   }
 
-  async getFile(magnetOrInfoHash: string, fileHash: string, signal?: AbortSignal): Promise<Blob> {
+  async getFile(magnetOrInfoHash: string, fileHash: string): Promise<Blob> {
     if (!this.isWebTorrentEnabled()) {
       throw new Error('WebTorrent is disabled in settings')
-    }
-
-    if (signal?.aborted) {
-      throw new Error('Aborted')
     }
 
     const client = await this.getClient()
@@ -148,70 +142,22 @@ export class WebTorrentService {
     let torrent = this.torrents.get(torrentId)
     if (!torrent) {
       let promise = this.pendingTorrents.get(torrentId)
-      
-      // Increment pending count for this torrentId
-      this.pendingCounts.set(torrentId, (this.pendingCounts.get(torrentId) || 0) + 1)
-
       if (!promise) {
         promise = new Promise<WebTorrentTorrent>((resolve, reject) => {
           const t = client.add(torrentId, { announce: this.getTrackers() }, (torrentInstance) => {
             this.pendingTorrents.delete(torrentId)
-            this.pendingInstances.delete(torrentId)
             this.registerTorrent(torrentId, torrentInstance as WebTorrentTorrent)
             resolve(torrentInstance as WebTorrentTorrent)
           })
           
-          this.pendingInstances.set(torrentId, t as unknown as WebTorrentTorrent)
-
           t.on('error', (err) => {
             this.pendingTorrents.delete(torrentId)
-            this.pendingInstances.delete(torrentId)
             reject(err)
           })
         })
         this.pendingTorrents.set(torrentId, promise)
       }
-
-      if (signal) {
-        const onAbort = () => {
-          const count = (this.pendingCounts.get(torrentId) || 0) - 1
-          if (count <= 0) {
-            this.pendingCounts.delete(torrentId)
-            const instance = this.pendingInstances.get(torrentId)
-            if (instance) {
-              instance.destroy()
-              this.pendingInstances.delete(torrentId)
-            }
-            this.pendingTorrents.delete(torrentId)
-          } else {
-            this.pendingCounts.set(torrentId, count)
-          }
-        }
-        signal.addEventListener('abort', onAbort)
-        
-        try {
-          torrent = await promise
-        } finally {
-          signal.removeEventListener('abort', onAbort)
-          const count = (this.pendingCounts.get(torrentId) || 0) - 1
-          if (count <= 0) {
-            this.pendingCounts.delete(torrentId)
-          } else {
-            this.pendingCounts.set(torrentId, count)
-          }
-        }
-      } else {
-        try {
-          torrent = await promise
-        } finally {
-          const count = (this.pendingCounts.get(torrentId) || 0) - 1
-          if (count <= 0) {
-            this.pendingCounts.delete(torrentId)
-          } else {
-            this.pendingCounts.set(torrentId, count)
-          }
-        }
-      }
+      torrent = await promise
     } else {
       // Refresh its position in LRU queue
       this.activeQueue = this.activeQueue.filter((id) => id !== torrentId)
@@ -308,8 +254,6 @@ export class WebTorrentService {
     this.objectUrls.clear()
     this.resolvedBlobUrls.clear()
     this.pendingTorrents.clear()
-    this.pendingCounts.clear()
-    this.pendingInstances.clear()
 
     if (this.client) {
       this.client.destroy()
