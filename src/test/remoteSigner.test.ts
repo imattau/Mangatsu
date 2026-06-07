@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { buildRemoteSignerPermissions, buildRemoteSignerRelays } from '../lib/remoteSigner'
+import { describe, expect, it, vi } from 'vitest'
+import {
+  buildRemoteSignerPermissions,
+  buildRemoteSignerRelays,
+  resolveConnectedSignerPubkey,
+} from '../lib/remoteSigner'
 
 describe('remote signer permissions', () => {
   it('includes the event kinds Mangatsu signs with remote accounts', () => {
@@ -27,5 +31,18 @@ describe('remote signer permissions', () => {
       'wss://nos.lol',
       'wss://relay.nostr.band',
     ])
+  })
+
+  it('prefers the connected signer identity over an extra pubkey request', async () => {
+    const getPublicKey = vi.fn().mockResolvedValue('fallback-pubkey')
+
+    await expect(
+      resolveConnectedSignerPubkey({
+        remote: 'connected-pubkey',
+        getPublicKey,
+      }),
+    ).resolves.toBe('connected-pubkey')
+
+    expect(getPublicKey).not.toHaveBeenCalled()
   })
 })

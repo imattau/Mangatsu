@@ -13,6 +13,7 @@ export class BlossomService {
 
   async upload(file: File, serverUrl: string, signer: BlossomSigner): Promise<{ sha256: string; url: string }> {
     const descriptor = await Actions.uploadBlob(serverUrl, file, {
+      auth: true,
       onAuth: async (server, sha256) => {
         return createUploadAuth(
           (draft) => signer.signEvent(draft),

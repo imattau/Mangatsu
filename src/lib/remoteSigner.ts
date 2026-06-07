@@ -28,3 +28,10 @@ export function buildRemoteSignerRelays(relays: string[] = []) {
 export function buildRemoteSignerPermissions() {
   return NostrConnectSigner.buildSigningPermissions(REMOTE_SIGNER_KINDS)
 }
+
+export async function resolveConnectedSignerPubkey(signer: {
+  remote?: string
+  getPublicKey: () => Promise<string>
+}) {
+  return signer.remote ?? (await signer.getPublicKey())
+}

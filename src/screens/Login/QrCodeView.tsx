@@ -5,7 +5,11 @@ import { NostrConnectAccount } from 'applesauce-accounts/accounts'
 import type { NostrConnectAccountSignerData } from 'applesauce-accounts/accounts'
 import { NostrConnectSigner, PrivateKeySigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
-import { buildRemoteSignerPermissions, buildRemoteSignerRelays } from '@/lib/remoteSigner'
+import {
+  buildRemoteSignerPermissions,
+  buildRemoteSignerRelays,
+  resolveConnectedSignerPubkey,
+} from '@/lib/remoteSigner'
 
 interface Props {
   onSuccess: (
@@ -44,7 +48,7 @@ export function QrCodeView({ onSuccess: onSuccessProp, onCancel }: Props) {
 
         await signer.open()
         await signer.waitForSigner()
-        const pubkey = await signer.getPublicKey()
+        const pubkey = await resolveConnectedSignerPubkey(signer)
 
         if (cancelled) {
           return

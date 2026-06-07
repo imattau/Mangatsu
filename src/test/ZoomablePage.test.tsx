@@ -42,6 +42,16 @@ describe('ZoomableReaderSurface', () => {
     expect(container.firstElementChild).toBeTruthy()
   })
 
+  it('provides a scroll viewport for vertical movement', () => {
+    render(
+      <ZoomableReaderSurface>
+        <img alt="Page 1" />
+      </ZoomableReaderSurface>,
+    )
+
+    expect(document.querySelector('[class*="overflow-y-auto"]')).toBeTruthy()
+  })
+
   it('continues to render children when resetKey changes', () => {
     const onPageChange = vi.fn()
     const { rerender, getByAltText } = render(

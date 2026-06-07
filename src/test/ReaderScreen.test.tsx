@@ -685,10 +685,11 @@ describe('ReaderScreen — integration smoke', () => {
     expect(main!.compareDocumentPosition(nav!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
-  it('keeps the page container overflow-hidden for unified pan/zoom', () => {
+  it('keeps the page container vertically scrollable for wheel navigation', () => {
     const { container } = renderReader()
     const main = container.querySelector('main')
-    expect(main).toHaveClass('overflow-hidden')
+    expect(main).toHaveClass('overflow-y-auto')
+    expect(main).toHaveClass('overflow-x-hidden')
     expect(screen.getAllByRole('img')[0]).toHaveClass('block', 'w-full')
   })
 })
