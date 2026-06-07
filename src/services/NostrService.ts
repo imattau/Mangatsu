@@ -7,12 +7,16 @@ import { AccountManager } from 'applesauce-accounts'
 import { EventFactory } from 'applesauce-factory'
 import type { Subscription } from 'rxjs'
 import { useRelayStore, DEFAULT_RELAYS } from '@/stores/relayStore'
+import { useBlossomStore } from '@/stores/blossomStore'
+import { parseComicEvent } from '@/lib/comic'
+import { ComicIndex } from '@/services/ComicIndex'
 
 export class NostrService {
   eventStore = new EventStore()
   relayPool = new RelayPool()
   accountManager = new AccountManager()
   eventFactory = new EventFactory()
+  comicIndex = new ComicIndex()
 
   private getRelays(): string[] {
     const { relays } = useRelayStore.getState()
@@ -36,6 +40,17 @@ export class NostrService {
     return this.accountManager.active
   }
 
+  private ingestEvent(event: NostrEvent) {
+    this.eventStore.add(event)
+    if (event.kind === 30040 && event.tags.some((tag) => tag[0] === 'L' && tag[1] === 'com.mangatsu')) {
+      const server = useBlossomStore.getState().primaryServer()
+      const comic = parseComicEvent(event, server)
+      if (comic) {
+        void this.comicIndex.upsertComic(comic)
+      }
+    }
+  }
+
   subscribeToUserComics(
     pubkey: string,
     onEvent?: (event: NostrEvent) => void,
@@ -48,7 +63,7 @@ export class NostrService {
 
     return source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         onEvent?.(event)
       },
     })
@@ -67,7 +82,7 @@ export class NostrService {
 
     return source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         onEvent?.(event)
       },
     })
@@ -76,12 +91,12 @@ export class NostrService {
   subscribeToGlobalComics(onEvent?: (event: NostrEvent) => void): Subscription {
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30040], limit: 50 }],
+      [{ kinds: [30040] }],
       { eventStore: this.eventStore },
     )
     return source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         onEvent?.(event)
       },
     })
@@ -98,7 +113,7 @@ export class NostrService {
     )
     return source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         onEvent?.(event)
       },
     })
@@ -113,12 +128,12 @@ export class NostrService {
     }
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30040], authors, limit: 50 }],
+      [{ kinds: [30040], authors }],
       { eventStore: this.eventStore },
     )
     return source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         onEvent?.(event)
       },
     })
@@ -136,7 +151,7 @@ export class NostrService {
     )
     return source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         onEvent?.(event)
       },
     })
@@ -160,7 +175,7 @@ export class NostrService {
     )
     return source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         onEvent?.(event)
       },
     })
@@ -179,7 +194,7 @@ export class NostrService {
 
     const sub = source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         if (event.kind === 10002) {
           const urls = event.tags
             .filter((t) => t[0] === 'r' && typeof t[1] === 'string')
@@ -213,9 +228,9 @@ export class NostrService {
       )
 
       const sub = source$.subscribe({
-        next: (event) => {
-          clearTimeout(timeout)
-          sub.unsubscribe()
+      next: (event) => {
+        clearTimeout(timeout)
+        sub.unsubscribe()
           try {
             const profile = JSON.parse(event.content) as {
               lud16?: string
@@ -243,7 +258,7 @@ export class NostrService {
       throw new Error(`Failed to publish event: ${details}`)
     }
 
-    this.eventStore.add(event)
+    this.ingestEvent(event)
     return responses
   }
 
@@ -258,7 +273,7 @@ export class NostrService {
     )
     const sub = source$.subscribe({
       next: (event) => {
-        this.eventStore.add(event)
+        this.ingestEvent(event)
         onEvent(event)
       },
     })

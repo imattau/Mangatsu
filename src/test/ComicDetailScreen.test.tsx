@@ -115,6 +115,8 @@ const mockBlossomStoreState = {
   servers: [] as { url: string }[],
   primaryServer: () => 'https://blossom.example',
   cachedHashes: {} as Record<string, string>,
+  cachedDimensions: {} as Record<string, { width: number; height: number }>,
+  setCachedDimensions: vi.fn(),
 }
 
 function setMockChapters(chapters: Chapter[]) {
@@ -201,6 +203,8 @@ vi.mock('../stores/blossomStore', () => ({
       servers: { url: string }[]
       primaryServer: () => string | undefined
       cachedHashes: Record<string, string>
+      cachedDimensions: Record<string, { width: number; height: number }>
+      setCachedDimensions: (hash: string, dimensions: { width: number; height: number }) => void
     }) => unknown,
   ) => sel(mockBlossomStoreState),
 }))

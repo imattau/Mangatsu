@@ -70,6 +70,7 @@ export function parseComicEvent(event: NostrEvent, server: string | undefined): 
     id: event.id,
     pubkey: event.pubkey,
     dTag,
+    publishedAt: event.created_at ?? 0,
     title: parseTag(event, 'title') || event.content || 'Untitled',
     author: parseTag(event, 'author'),
     authorPubkey: parseTag(event, 'author_pubkey'),

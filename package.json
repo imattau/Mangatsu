@@ -20,6 +20,7 @@
     "applesauce-relay": "^6.0.3",
     "applesauce-signers": "^6.0.1",
     "blossom-client-sdk": "^5.0.0",
+    "flexsearch": "^0.8.212",
     "jszip": "^3.10.1",
     "nostr-tools": "^2.23.5",
     "pdfjs-dist": "^6.0.227",

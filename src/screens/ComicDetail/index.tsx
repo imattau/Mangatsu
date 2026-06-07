@@ -408,6 +408,7 @@ export function ComicDetailScreen() {
     }
 
     removeComic(comic.dTag)
+    void service.comicIndex?.removeComic(comic.pubkey, comic.dTag)
     removeChaptersForComic(comic.dTag)
     removeProgressForComic(comic.dTag)
     navigate('/')

@@ -305,6 +305,12 @@ export function NostrProvider({ children }: PropsWithChildren) {
     }
   }, [pubkey, relayKey, service, syncGeneration])
 
+  useEffect(() => {
+    const comics = Object.values(useComicStore.getState().comics)
+    if (comics.length === 0) return
+    void service.comicIndex.upsertComics(comics)
+  }, [service, syncGeneration])
+
   return (
     <EventStoreProvider eventStore={service.eventStore}>
       <AccountsProvider manager={service.accountManager}>

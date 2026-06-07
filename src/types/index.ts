@@ -2,6 +2,7 @@ export interface Comic {
   id: string
   pubkey: string
   dTag: string
+  publishedAt?: number
   title: string
   author: string
   authorPubkey: string

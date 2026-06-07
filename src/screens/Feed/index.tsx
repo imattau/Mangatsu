@@ -1,29 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { BrandMark } from '@/components/BrandMark'
 import { HeaderNav } from '@/components/HeaderNav'
-import { useEventStore, useObservableState } from 'applesauce-react/hooks'
-import { of } from 'rxjs'
 import { useNostr } from '@/context/NostrContext'
 import { useAuthStore } from '@/stores/authStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { DEFAULT_RELAYS, useRelayStore } from '@/stores/relayStore'
 import type { Comic } from '@/types'
 import { BlossomImage } from '@/components/BlossomImage'
-import type { NostrEvent } from 'applesauce-core/helpers/event'
-import { parseComicEvent } from '@/lib/comic'
 import { useSettingsStore } from '@/stores/settingsStore'
+import type { NostrEvent } from 'applesauce-core/helpers/event'
 
-const EMPTY_EVENTS: NostrEvent[] = []
 type Tab = 'global' | 'follows' | 'authors'
 
 type AuthorProfile = {
   name: string | null
   picture: string | null
-}
-
-function isMangatsuEvent(event: NostrEvent) {
-  return event.tags.some((tag) => tag[0] === 'L' && tag[1] === 'com.mangatsu')
 }
 
 function parseFollowedPubkeys(event: NostrEvent): string[] {
@@ -52,7 +44,15 @@ function authorInitials(label: string) {
 
 export function FeedScreen() {
   const { service, syncGeneration } = useNostr()
-  const eventStore = useEventStore()
+  const subscribeToIndex = useMemo(
+    () => service.comicIndex.subscribe.bind(service.comicIndex),
+    [service.comicIndex],
+  )
+  const indexVersion = useSyncExternalStore(
+    subscribeToIndex,
+    service.comicIndex.getSnapshot,
+    service.comicIndex.getSnapshot,
+  )
   const [searchParams, setSearchParams] = useSearchParams()
   const pubkey = useAuthStore((s) => s.pubkey)
   const primaryServer = useBlossomStore((s) => s.primaryServer)
@@ -66,6 +66,14 @@ export function FeedScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('global')
   const [followedPubkeys, setFollowedPubkeys] = useState<string[]>([])
   const [authorProfiles, setAuthorProfiles] = useState<Record<string, AuthorProfile | null>>({})
+  const [visibleCount, setVisibleCount] = useState(60)
+  const [feedComics, setFeedComics] = useState<Comic[]>([])
+  const [feedHasMore, setFeedHasMore] = useState(false)
+  const [feedLoading, setFeedLoading] = useState(true)
+  const [authorDirectory, setAuthorDirectory] = useState<
+    Array<{ pubkey: string; count: number; latest: Comic }>
+  >([])
+  const [authorDirectoryLoading, setAuthorDirectoryLoading] = useState(false)
 
   // Subscribe to global comics
   useEffect(() => {
@@ -92,105 +100,112 @@ export function FeedScreen() {
     return () => sub.unsubscribe()
   }, [followedPubkeys, relayKey, service, syncGeneration])
 
-  // Reactive timelines
-  const mangatsuFilter = useMemo(
-    () => [{ kinds: [30040], '#L': ['com.mangatsu'], limit: 50 }],
-    [],
-  )
-  const globalTimeline$ = useMemo(
-    () => eventStore.timeline(mangatsuFilter),
-    [eventStore, mangatsuFilter],
-  )
-  const globalEvents = useObservableState(globalTimeline$) ?? EMPTY_EVENTS
-
-  const followsFilter = useMemo(
-    () =>
-      followedPubkeys.length > 0
-        ? [{ kinds: [30040], authors: followedPubkeys, '#L': ['com.mangatsu'] }]
-        : null,
-    [followedPubkeys],
-  )
-  const followsTimeline$ = useMemo(
-    () => (followsFilter ? eventStore.timeline(followsFilter) : of([])),
-    [eventStore, followsFilter],
-  )
-  const followsEvents = useObservableState(followsTimeline$) ?? EMPTY_EVENTS
-
   const showNsfw = useSettingsStore((s) => s.showNsfw)
   const server = primaryServer()
   const activeTag = searchParams.get('tag')?.trim() ?? ''
   const activeAuthor = searchParams.get('author')?.trim() ?? ''
+  const searchQuery = searchParams.get('q')?.trim() ?? ''
+  const authorPubkeys = useMemo(() => followedPubkeys.filter(Boolean), [followedPubkeys])
 
-  const globalComics = useMemo(
-    () =>
-      globalEvents.flatMap((e) => {
-        if (!isMangatsuEvent(e)) return []
-        const c = parseComicEvent(e, server)
-        return c ? [c] : []
-      }),
-    [globalEvents, server],
-  )
-
-  const followsComics = useMemo(
-    () =>
-      followsEvents.flatMap((e) => {
-        if (!isMangatsuEvent(e)) return []
-        const c = parseComicEvent(e, server)
-        return c ? [c] : []
-    }),
-    [followsEvents, server],
-  )
-
-  const feedComics = activeTab === 'follows' ? followsComics : globalComics
-  const tagFilteredComics = useMemo(
-    () => (activeTag ? feedComics.filter((comic) => comic.tags.includes(activeTag)) : feedComics),
-    [activeTag, feedComics],
-  )
-  const activeComics = useMemo(
-    () =>
-      activeAuthor
-        ? tagFilteredComics.filter((comic) => resolveAuthorPubkey(comic) === activeAuthor)
-        : tagFilteredComics,
-    [activeAuthor, tagFilteredComics],
-  )
-
-  const authorDirectory = useMemo(() => {
-    const groups = new Map<
-      string,
-      {
-        pubkey: string
-        count: number
-        latest: Comic
-      }
-    >()
-
-    for (const comic of tagFilteredComics) {
-      const authorPubkey = resolveAuthorPubkey(comic)
-      const existing = groups.get(authorPubkey)
-      if (!existing) {
-        groups.set(authorPubkey, { pubkey: authorPubkey, count: 1, latest: comic })
-        continue
-      }
-      existing.count += 1
-      if (comic.title.localeCompare(existing.latest.title) < 0) {
-        existing.latest = comic
-      }
-    }
-
-    return [...groups.values()].sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count
-      return a.latest.title.localeCompare(b.latest.title)
-    })
-  }, [tagFilteredComics])
-
-  const authorPubkeys = useMemo(
-    () => [...new Set(tagFilteredComics.map((comic) => resolveAuthorPubkey(comic)).filter(Boolean))],
-    [tagFilteredComics],
-  )
+  useEffect(() => {
+    setVisibleCount(60)
+  }, [activeTab, activeTag, activeAuthor, searchQuery, relayKey])
 
   useEffect(() => {
     let cancelled = false
-    const missing = authorPubkeys.filter((authorPubkey) => authorProfiles[authorPubkey] === undefined)
+
+    async function loadFeed() {
+      if (activeTab === 'authors' && !activeAuthor) {
+        setFeedComics([])
+        setFeedHasMore(false)
+        setFeedLoading(false)
+        return
+      }
+
+      setFeedLoading(true)
+      try {
+        const query = {
+          limit: visibleCount,
+          tag: activeTag || undefined,
+          author: activeAuthor || undefined,
+          search: searchQuery || undefined,
+          authors:
+            activeTab === 'follows' && authorPubkeys.length > 0 ? authorPubkeys : undefined,
+        }
+        const result = await service.comicIndex.queryComics(query)
+        if (cancelled) return
+        setFeedComics(result.items)
+        setFeedHasMore(result.hasMore)
+      } finally {
+        if (!cancelled) {
+          setFeedLoading(false)
+        }
+      }
+    }
+
+    void loadFeed()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeAuthor,
+    activeTab,
+    activeTag,
+    authorPubkeys,
+    indexVersion,
+    searchQuery,
+    service.comicIndex,
+    visibleCount,
+    syncGeneration,
+  ])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadAuthors() {
+      if (activeTab !== 'authors' || activeAuthor) {
+        setAuthorDirectory([])
+        setAuthorDirectoryLoading(false)
+        return
+      }
+
+      setAuthorDirectoryLoading(true)
+      try {
+        const result = await service.comicIndex.listAuthors({
+          tag: activeTag || undefined,
+          search: searchQuery || undefined,
+        })
+        if (cancelled) return
+        setAuthorDirectory(result)
+      } finally {
+        if (!cancelled) {
+          setAuthorDirectoryLoading(false)
+        }
+      }
+    }
+
+    void loadAuthors()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeAuthor,
+    activeTab,
+    activeTag,
+    authorPubkeys,
+    indexVersion,
+    searchQuery,
+    service.comicIndex,
+    syncGeneration,
+  ])
+
+  useEffect(() => {
+    let cancelled = false
+    const missing = [...new Set(feedComics.map((comic) => resolveAuthorPubkey(comic)).filter(Boolean))].filter(
+      (authorPubkey) => authorProfiles[authorPubkey] === undefined,
+    )
     if (missing.length === 0) return
 
     void Promise.all(
@@ -218,7 +233,7 @@ export function FeedScreen() {
     return () => {
       cancelled = true
     }
-  }, [authorPubkeys, authorProfiles, service, syncGeneration])
+  }, [authorProfiles, feedComics, service, syncGeneration])
 
   function handleToggleFollow(authorPubkey: string) {
     const isFollowing = followedPubkeys.includes(authorPubkey)
@@ -246,6 +261,13 @@ export function FeedScreen() {
       if (next.author) updated.set('author', next.author)
       else updated.delete('author')
     }
+    setSearchParams(updated)
+  }
+
+  function updateQuery(value: string) {
+    const updated = new URLSearchParams(searchParams)
+    if (value.trim()) updated.set('q', value.trim())
+    else updated.delete('q')
     setSearchParams(updated)
   }
 
@@ -291,6 +313,19 @@ export function FeedScreen() {
           ))}
         </div>
 
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3">
+          <label className="block">
+            <span className="sr-only">Search comics</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => updateQuery(e.target.value)}
+              placeholder="Search title, author, description, or tags"
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-500"
+            />
+          </label>
+        </div>
+
         {activeTag || activeAuthor ? (
           <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm">
             {activeTag ? (
@@ -319,7 +354,10 @@ export function FeedScreen() {
             ) : null}
             <button
               type="button"
-              onClick={() => updateSearchParams({ tag: null, author: null })}
+              onClick={() => {
+                updateSearchParams({ tag: null, author: null })
+                updateQuery('')
+              }}
               className="ml-auto text-zinc-400 transition hover:text-zinc-100"
             >
               Clear
@@ -328,7 +366,14 @@ export function FeedScreen() {
         ) : null}
 
         {/* Content */}
-        {activeTab === 'follows' && followedPubkeys.length === 0 ? (
+        {feedLoading && feedComics.length === 0 && (activeTab !== 'authors' || Boolean(activeAuthor)) ? (
+          <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
+            <p className="text-lg font-medium text-zinc-100">Loading comics</p>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
+              Building the local index from relays.
+            </p>
+          </section>
+        ) : activeTab === 'follows' && followedPubkeys.length === 0 ? (
           <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
             <p className="text-lg font-medium text-zinc-100">No follows yet</p>
             <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
@@ -336,7 +381,14 @@ export function FeedScreen() {
             </p>
           </section>
         ) : activeTab === 'authors' && !activeAuthor ? (
-          authorDirectory.length === 0 ? (
+          authorDirectoryLoading ? (
+            <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
+              <p className="text-lg font-medium text-zinc-100">Loading authors</p>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
+                Aggregating authors from the local catalog.
+              </p>
+            </section>
+          ) : authorDirectory.length === 0 ? (
             <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
               <p className="text-lg font-medium text-zinc-100">No authors found</p>
               <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
@@ -439,7 +491,7 @@ export function FeedScreen() {
               })}
             </div>
           )
-        ) : activeComics.length === 0 ? (
+        ) : feedComics.length === 0 ? (
           <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
             <p className="text-lg font-medium text-zinc-100">No comics found</p>
             <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
@@ -447,49 +499,63 @@ export function FeedScreen() {
             </p>
           </section>
         ) : (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-            {activeComics.map((comic) => (
-              <article
-                key={`${comic.pubkey}:${comic.dTag}`}
-                className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
-              >
-                <Link
-                  to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
-                  className="block"
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+              {feedComics.map((comic) => (
+                <article
+                  key={`${comic.pubkey}:${comic.dTag}`}
+                  className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
                 >
-                  <ComicCover
-                    comic={comic}
-                    server={comic.coverServer || comic.blossomServer || server}
-                    blurred={comic.nsfw && !showNsfw}
-                  />
-                  <div className="px-0.5">
-                    <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
-                      {comic.title}
-                    </p>
-                  </div>
-                </Link>
-                <div className="px-0.5">
-                  <button
-                    type="button"
-                    onClick={() => updateSearchParams({ author: resolveAuthorPubkey(comic) })}
-                    className="flex w-full items-center gap-2 text-left text-xs text-zinc-500 transition hover:text-zinc-200"
+                  <Link
+                    to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
+                    className="block"
                   >
-                    <AuthorAvatar
-                      pubkey={resolveAuthorPubkey(comic)}
-                      name={authorLabel(resolveAuthorPubkey(comic))}
-                      picture={authorPicture(resolveAuthorPubkey(comic))}
-                      className="h-5 w-5"
+                    <ComicCover
+                      comic={comic}
+                      server={comic.coverServer || comic.blossomServer || server}
+                      blurred={comic.nsfw && !showNsfw}
                     />
-                    <span>
-                      by{' '}
-                      <span className="font-medium text-zinc-400">
-                        {authorLabel(resolveAuthorPubkey(comic))}
+                    <div className="px-0.5">
+                      <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
+                        {comic.title}
+                      </p>
+                    </div>
+                  </Link>
+                  <div className="px-0.5">
+                    <button
+                      type="button"
+                      onClick={() => updateSearchParams({ author: resolveAuthorPubkey(comic) })}
+                      className="flex w-full items-center gap-2 text-left text-xs text-zinc-500 transition hover:text-zinc-200"
+                    >
+                      <AuthorAvatar
+                        pubkey={resolveAuthorPubkey(comic)}
+                        name={authorLabel(resolveAuthorPubkey(comic))}
+                        picture={authorPicture(resolveAuthorPubkey(comic))}
+                        className="h-5 w-5"
+                      />
+                      <span>
+                        by{' '}
+                        <span className="font-medium text-zinc-400">
+                          {authorLabel(resolveAuthorPubkey(comic))}
+                        </span>
                       </span>
-                    </span>
-                  </button>
-                </div>
-              </article>
-            ))}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            {feedHasMore ? (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((count) => count + 60)}
+                  className="rounded-full border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800"
+                >
+                  Load more
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </div>

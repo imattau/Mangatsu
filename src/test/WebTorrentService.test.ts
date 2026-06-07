@@ -31,7 +31,15 @@ describe('WebTorrentService', () => {
   it('seeds files correctly', async () => {
     const file = new File(['dummy content'], 'test.webp', { type: 'image/webp' })
     const onMock = vi.fn().mockReturnThis()
-    const seedMock = vi.fn(() => ({ on: onMock }))
+    const seedMock = vi.fn((_files, _opts, cb) => {
+      const torrent = {
+        magnetURI: 'magnet:?xt=urn:btih:mock',
+        infoHash: 'mock',
+        on: onMock,
+      }
+      cb?.(torrent)
+      return torrent
+    })
     const getClientSpy = vi.spyOn(webTorrentService, 'getClient').mockResolvedValue({
       seed: seedMock,
     } as never)
