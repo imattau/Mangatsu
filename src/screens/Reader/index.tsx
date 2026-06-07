@@ -274,10 +274,10 @@ export function ReaderScreen() {
 
       {fullscreen ? (
         <div className="absolute bottom-3 left-3 right-3 z-20 flex flex-col gap-2">
-          {enableWebTorrent && stats.activeTorrents > 0 && (
+          {enableWebTorrent && (
             <div className="mx-auto rounded-full bg-zinc-950/80 px-3 py-1 text-[0.65rem] text-zinc-400 font-mono backdrop-blur flex gap-3 shadow-lg border border-white/5">
               <span className="flex items-center gap-1">
-                <span className="h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+                <span className={`h-1 w-1 rounded-full bg-emerald-500 ${stats.activeTorrents > 0 ? 'animate-pulse' : 'opacity-50'}`} />
                 Torrents: {stats.activeTorrents}
               </span>
               <span>Peers: {stats.numPeers}</span>
@@ -314,10 +314,10 @@ export function ReaderScreen() {
         </div>
       ) : (
         <nav className="flex flex-col gap-4 border-t border-zinc-800 px-4 py-6">
-          {enableWebTorrent && stats.activeTorrents > 0 && (
+          {enableWebTorrent && (
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[0.7rem] text-zinc-500 font-mono">
               <span className="flex items-center gap-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className={`h-1.5 w-1.5 rounded-full bg-emerald-500 ${stats.activeTorrents > 0 ? 'animate-pulse' : 'opacity-50'}`} />
                 Active Torrents: <strong className="text-zinc-400">{stats.activeTorrents}</strong>
               </span>
               <span>

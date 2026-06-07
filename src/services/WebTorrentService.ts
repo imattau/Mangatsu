@@ -70,7 +70,11 @@ export class WebTorrentService {
           this.clientPromise = import('webtorrent')
             .then((module) => {
               try {
-                const WebTorrent = module.default as unknown as new () => WebTorrentInstance
+                const WebTorrent = (
+                  (typeof window !== 'undefined' && (window as any).WebTorrent) ||
+                  module.default ||
+                  module
+                ) as unknown as new () => WebTorrentInstance
                 this.client = new WebTorrent()
                 return this.client
               } catch (err) {
