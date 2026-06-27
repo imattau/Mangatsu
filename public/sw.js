@@ -106,6 +106,10 @@ self.addEventListener('fetch', (event) => {
 })
 
 self.addEventListener('message', (event) => {
+  if (event.origin !== self.location.origin) {
+    return
+  }
+
   const data = event.data || {}
   const requestId = data.requestId
   const reply = (payload) => {

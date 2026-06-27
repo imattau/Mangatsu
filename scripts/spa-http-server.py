@@ -50,6 +50,17 @@ class SpaRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(fs.st_size))
         self.send_header("Cache-Control", "no-cache")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "connect-src 'self' wss://* https:; "
+            "img-src 'self' https: data: blob:; "
+            "worker-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "manifest-src 'self'",
+        )
         self.end_headers()
         return file
 

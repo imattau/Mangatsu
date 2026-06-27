@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useNwcStore } from '../stores/nwcStore'
+import { initSession } from '../lib/sessionCrypto'
 
 describe('nwcStore', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await initSession()
     useNwcStore.setState({ connectionString: null })
   })
 

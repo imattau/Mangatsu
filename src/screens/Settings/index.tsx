@@ -7,7 +7,8 @@ import { useRelayStore } from '@/stores/relayStore'
 import { useNostr } from '@/context/NostrContext'
 import { useNwcStore } from '@/stores/nwcStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { webTorrentService } from '@/services/WebTorrentService'
+import { clearSession } from '@/lib/sessionCrypto'
+import { useSessionStore, type SessionTimeoutOption } from '@/stores/sessionStore'
 
 function truncatePubkey(pubkey: string) {
   if (pubkey.length <= 16) return pubkey
@@ -50,10 +51,13 @@ export function SettingsScreen() {
   const setEnableWebTorrent = useSettingsStore((s) => s.setEnableWebTorrent)
   const [nwcInput, setNwcInput] = useState('')
   const [newUrl, setNewUrl] = useState('')
+  const [urlError, setUrlError] = useState<string | null>(null)
   const [isBlossomOpen, setIsBlossomOpen] = useState(false)
   const [isRelaysOpen, setIsRelaysOpen] = useState(false)
   const [isWebTorrentOpen, setIsWebTorrentOpen] = useState(false)
   const [accountProfile, setAccountProfile] = useState<AccountProfile | null>(null)
+  const timeoutMinutes = useSessionStore((s) => s.timeoutMinutes)
+  const setTimeoutMinutes = useSessionStore((s) => s.setTimeoutMinutes)
   
 
 
@@ -96,6 +100,7 @@ export function SettingsScreen() {
   const usingDefaultRelays = userRelays.length === 0
 
   function handleSignOut() {
+    clearSession()
     clearAuth()
     sessionStorage.clear()
     navigate('/login')
@@ -104,6 +109,17 @@ export function SettingsScreen() {
   function handleAddServer() {
     const url = newUrl.trim()
     if (!url) return
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && !parsed.hostname.endsWith('.localhost')) {
+        setUrlError('Blossom server URL must use HTTPS')
+        return
+      }
+    } catch {
+      setUrlError('Invalid URL')
+      return
+    }
+    setUrlError(null)
     const newServers = [...servers, { url }]
     setServers(newServers)
     setNewUrl('')
@@ -303,7 +319,7 @@ export function SettingsScreen() {
               <input
                 type="url"
                 value={newUrl}
-                onChange={(e) => setNewUrl(e.target.value)}
+                onChange={(e) => { setNewUrl(e.target.value); setUrlError(null) }}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddServer()}
                 placeholder="https://blossom.example"
                 className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
@@ -315,6 +331,9 @@ export function SettingsScreen() {
                 Add
               </button>
             </div>
+            {urlError && (
+              <p className="mt-2 text-sm text-red-400">{urlError}</p>
+            )}
           </div>
         </section>
 
@@ -398,6 +417,30 @@ export function SettingsScreen() {
 
 
           </div>
+        </section>
+
+        {/* Session */}
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-5">
+          <p className="mb-4 text-xs uppercase tracking-[0.35em] text-zinc-500">Session</p>
+          <label className="flex cursor-pointer items-center justify-between gap-4">
+            <div>
+              <p className="text-sm text-zinc-100">Auto-lock after inactivity</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Clears the session and requires re-authentication
+              </p>
+            </div>
+            <select
+              value={timeoutMinutes}
+              onChange={(e) => setTimeoutMinutes(Number(e.target.value) as SessionTimeoutOption)}
+              aria-label="Session auto-lock timeout"
+              className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+            >
+              <option value={0}>Never</option>
+              <option value={15}>15 min</option>
+              <option value={60}>1 hour</option>
+              <option value={240}>4 hours</option>
+            </select>
+          </label>
         </section>
       </div>
     </div>

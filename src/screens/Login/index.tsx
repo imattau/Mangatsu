@@ -11,12 +11,13 @@ import { NostrConnectSigner } from 'applesauce-signers'
 import { useNostr } from '@/context/NostrContext'
 import { BrandMark } from '@/components/BrandMark'
 import { buildRemoteSignerPermissions, buildRemoteSignerRelays } from '@/lib/remoteSigner'
-import { useAuthStore } from '@/stores/authStore'
+import { useAuthStore, type AuthMethod } from '@/stores/authStore'
+import { initSession, clearSession } from '@/lib/sessionCrypto'
 import { QrCodeView } from './QrCodeView'
 
 const NSEC_SESSION_KEY = 'mangatsu:nsec'
 
-type ActiveMethod = 'none' | 'nsec' | 'bunker' | 'qr'
+type ActiveMethod = 'none' | 'nsec' | 'bunker' | 'qr' | 'passkey'
 
 function hasNostrExtension() {
   return typeof window !== 'undefined' && Boolean((window as Window & { nostr?: unknown }).nostr)
@@ -28,13 +29,15 @@ interface BunkerSession {
   connectPromise: Promise<unknown> | null
 }
 
+type LoginAccount = ExtensionAccount | PrivateKeyAccount | NostrConnectAccount | import('nostr-passkey/applesauce').PasskeyAccount
+
 async function commitLogin(
-  account: ExtensionAccount | PrivateKeyAccount | NostrConnectAccount,
-  method: 'extension' | 'nsec' | 'bunker' | 'qr',
+  account: LoginAccount,
+  method: AuthMethod,
   service: ReturnType<typeof useNostr>['service'],
   setAuth: (
     pubkey: string,
-    method: 'extension' | 'nsec' | 'bunker' | 'qr',
+    method: AuthMethod,
     account?: SerializedAccount<NostrConnectAccountSignerData> | null,
   ) => void,
   accountData: SerializedAccount<NostrConnectAccountSignerData> | null = null,
@@ -58,8 +61,35 @@ export function LoginScreen() {
   const [activeMethod, setActiveMethod] = useState<ActiveMethod>('none')
   const [nsecValue, setNsecValue] = useState('')
   const [bunkerValue, setBunkerValue] = useState('')
+  const [passkeyNsecValue, setPasskeyNsecValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [hasPasskeyIdentity, setHasPasskeyIdentity] = useState(false)
+
+  useEffect(() => {
+    async function check() {
+      try {
+        const isPrfSupported = (await import('nostr-passkey')).isPRFSupported
+        const supported = await isPrfSupported()
+        if (!supported) return
+      } catch {
+        // passkey not available
+      }
+    }
+    void check()
+  }, [])
+
+  useEffect(() => {
+    async function checkIdentity() {
+      try {
+        const { hasPasskeyIdentityOnDevice } = await import('nostr-passkey/applesauce')
+        setHasPasskeyIdentity(hasPasskeyIdentityOnDevice())
+      } catch {
+        setHasPasskeyIdentity(false)
+      }
+    }
+    void checkIdentity()
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -78,6 +108,7 @@ export function LoginScreen() {
       const { ExtensionAccount } = await import('applesauce-accounts/accounts')
       const account = await ExtensionAccount.fromExtension()
       await commitLogin(account, 'extension', service, setAuth)
+      await initSession()
       navigate('/')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Extension login failed.')
@@ -96,6 +127,7 @@ export function LoginScreen() {
       sessionStorage.setItem(NSEC_SESSION_KEY, value)
       setNsecValue('')
       await commitLogin(account, 'nsec', service, setAuth)
+      await initSession()
       navigate('/')
     } catch {
       setError('Invalid nsec key.')
@@ -144,9 +176,66 @@ export function LoginScreen() {
       const pubkey = await session.signer.getPublicKey()
       const account = new NostrConnectAccount(pubkey, session.signer)
       await commitLogin(account, 'bunker', service, setAuth, account.toJSON())
+      await initSession()
       navigate('/')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Bunker connection failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handlePasskeyUnlock() {
+    setError(null)
+    setLoading(true)
+    try {
+      const { unlockPasskeyIdentity } = await import('nostr-passkey')
+      const { buildPasskeyAccountFromIdentity } = await import('nostr-passkey/applesauce')
+      const identity = await unlockPasskeyIdentity()
+      const account = buildPasskeyAccountFromIdentity(identity)
+      await commitLogin(account, 'passkey', service, setAuth)
+      await initSession()
+      navigate('/')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Passkey unlock failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handlePasskeyRegister() {
+    setError(null)
+    setLoading(true)
+    try {
+      const { registerPasskeyIdentity } = await import('nostr-passkey')
+      const { buildPasskeyAccountFromIdentity } = await import('nostr-passkey/applesauce')
+      const identity = await registerPasskeyIdentity({ rpName: 'Mangatsu' })
+      const account = buildPasskeyAccountFromIdentity(identity)
+      await commitLogin(account, 'passkey', service, setAuth)
+      await initSession()
+      navigate('/')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Passkey registration failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handlePasskeyImportNsec() {
+    setError(null)
+    setLoading(true)
+    try {
+      const value = passkeyNsecValue.trim()
+      const { importPasskeyIdentityFromNsec } = await import('nostr-passkey')
+      const { buildPasskeyAccountFromIdentity } = await import('nostr-passkey/applesauce')
+      const identity = await importPasskeyIdentityFromNsec(value, { rpName: 'Mangatsu' })
+      const account = buildPasskeyAccountFromIdentity(identity)
+      setPasskeyNsecValue('')
+      await commitLogin(account, 'passkey', service, setAuth)
+      await initSession()
+      navigate('/')
+    } catch {
+      setError('Invalid nsec key or import failed.')
     } finally {
       setLoading(false)
     }
@@ -161,6 +250,9 @@ export function LoginScreen() {
       bunkerSessionRef.current = null
       setBunkerValue('')
     }
+    if (method === 'passkey') {
+      setPasskeyNsecValue('')
+    }
     setActiveMethod('none')
     setError(null)
   }
@@ -168,6 +260,7 @@ export function LoginScreen() {
   function handleClearSavedSession() {
     sessionStorage.removeItem(NSEC_SESSION_KEY)
     service.accountManager.clearActive()
+    clearSession()
     clearAuth()
   }
 
@@ -286,8 +379,9 @@ export function LoginScreen() {
 
           {activeMethod === 'qr' ? (
             <QrCodeView
-              onSuccess={(pubkey, account) => {
+              onSuccess={async (pubkey, account) => {
                 setAuth(pubkey, 'qr', account)
+                await initSession()
                 navigate('/')
               }}
               onCancel={() => handleCancel('qr')}
@@ -301,6 +395,69 @@ export function LoginScreen() {
               <div className="text-sm font-semibold text-white">QR Code</div>
               <p className="mt-1 text-sm leading-5 text-zinc-400">
                 Generate a nostrconnect:// code for a mobile signer.
+              </p>
+            </button>
+          )}
+
+          {activeMethod === 'passkey' ? (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4">
+              <div className="mb-3 text-sm font-semibold text-white">Passkey</div>
+              {hasPasskeyIdentity ? (
+                <button
+                  type="button"
+                  onClick={handlePasskeyUnlock}
+                  disabled={loading}
+                  className="w-full rounded-xl bg-white px-4 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? 'Unlocking…' : 'Unlock with Passkey'}
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={handlePasskeyRegister}
+                    disabled={loading}
+                    className="rounded-xl bg-white px-4 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {loading ? 'Registering…' : 'Register New Passkey'}
+                  </button>
+                  <div className="text-xs text-zinc-500">or import an existing key</div>
+                  <input
+                    type="password"
+                    value={passkeyNsecValue}
+                    onChange={(event) => setPasskeyNsecValue(event.target.value)}
+                    placeholder="nsec1..."
+                    autoComplete="off"
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePasskeyImportNsec}
+                    disabled={loading || !passkeyNsecValue.trim()}
+                    className="rounded-xl border border-zinc-700 px-4 py-3 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Import Key into Passkey
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => handleCancel('passkey')}
+                className="mt-3 w-full rounded-xl border border-zinc-700 px-4 py-3 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setActiveMethod('passkey')}
+              disabled={loading}
+              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="text-sm font-semibold text-white">Passkey</div>
+              <p className="mt-1 text-sm leading-5 text-zinc-400">
+                Use WebAuthn biometrics or a hardware security key.
               </p>
             </button>
           )}

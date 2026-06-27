@@ -21,6 +21,8 @@ import type { Nip44Signer } from '@/lib/nip51'
 import { useComicStore } from '@/stores/comicStore'
 import type { Subscription } from 'rxjs'
 import { parseComicEvent } from '@/lib/comic'
+import { initSession, clearSession } from '@/lib/sessionCrypto'
+import { useSessionStore, isSessionExpired } from '@/stores/sessionStore'
 
 const NSEC_SESSION_KEY = 'mangatsu:nsec'
 
@@ -106,6 +108,35 @@ export function NostrProvider({ children }: PropsWithChildren) {
   }, [activeRelayUrls, relayKey, service, syncGeneration])
 
   useEffect(() => {
+    const timeoutMinutes = useSessionStore.getState().timeoutMinutes
+    if (timeoutMinutes === 0) return
+
+    const touch = () => useSessionStore.getState().touch()
+    const interval = window.setInterval(() => {
+      const { lastActive, timeoutMinutes } = useSessionStore.getState()
+      if (isSessionExpired(lastActive, timeoutMinutes)) {
+        clearSession()
+        clearAuth()
+        service.accountManager.clearActive()
+        sessionStorage.removeItem(NSEC_SESSION_KEY)
+      }
+    }, 30_000)
+
+    document.addEventListener('mousedown', touch)
+    document.addEventListener('keydown', touch)
+    document.addEventListener('touchstart', touch)
+    document.addEventListener('scroll', touch, { passive: true })
+
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('mousedown', touch)
+      document.removeEventListener('keydown', touch)
+      document.removeEventListener('touchstart', touch)
+      document.removeEventListener('scroll', touch)
+    }
+  }, [clearAuth, service])
+
+  useEffect(() => {
     if (!isRefreshing) {
       return
     }
@@ -136,6 +167,7 @@ export function NostrProvider({ children }: PropsWithChildren) {
         return
       }
 
+      useSessionStore.getState().touch()
       const resolvedMethod = restoreMethod(method)
 
       if (resolvedMethod === 'bunker' || resolvedMethod === 'qr') {
@@ -156,12 +188,14 @@ export function NostrProvider({ children }: PropsWithChildren) {
             if (!cancelled && (pubkey !== account.pubkey || method !== resolvedMethod)) {
               setAuth(account.pubkey, resolvedMethod, accountData)
             }
+            void initSession()
             return
           } catch {
             // fall through to clearing auth below
           }
         }
 
+        clearSession()
         clearAuth()
         service.accountManager.clearActive()
         return
@@ -187,12 +221,43 @@ export function NostrProvider({ children }: PropsWithChildren) {
           if (!cancelled && (pubkey !== account.pubkey || method !== 'nsec')) {
             setAuth(account.pubkey, 'nsec')
           }
+          void initSession()
         } catch {
           sessionStorage.removeItem(NSEC_SESSION_KEY)
+          clearSession()
           clearAuth()
           service.accountManager.clearActive()
         }
         return
+      }
+
+      if (resolvedMethod === 'passkey') {
+        try {
+          const { getStoredPasskeyAccount } = await import('nostr-passkey/applesauce')
+          const account = getStoredPasskeyAccount()
+          if (!account || account.pubkey !== pubkey) {
+            clearAuth()
+            service.accountManager.clearActive()
+            return
+          }
+          const existing = service.accountManager.getAccountForPubkey(account.pubkey)
+          if (existing) {
+            service.accountManager.replaceAccount(existing, account)
+          } else {
+            service.accountManager.addAccount(account)
+          }
+          service.accountManager.setActive(account)
+          if (!cancelled && (pubkey !== account.pubkey || method !== 'passkey')) {
+            setAuth(account.pubkey, 'passkey')
+          }
+          void initSession()
+          return
+        } catch {
+          clearSession()
+          clearAuth()
+          service.accountManager.clearActive()
+          return
+        }
       }
 
       try {
@@ -209,7 +274,9 @@ export function NostrProvider({ children }: PropsWithChildren) {
         if (!cancelled && (pubkey !== active.pubkey || method !== 'extension')) {
           setAuth(active.pubkey, 'extension')
         }
+        void initSession()
       } catch {
+        clearSession()
         clearAuth()
         service.accountManager.clearActive()
       }
