@@ -102,9 +102,18 @@ export function ReaderScreen() {
   )
 
   const [currentPage, setCurrentPage] = useState(1)
+  const [showControls, setShowControls] = useState(true)
   const savedPage = useReadStore((s) => s.progress[chapterDTag]?.page ?? 1)
   const enableWebTorrent = useSettingsStore((s) => s.enableWebTorrent)
   const [stats, setStats] = useState(() => webTorrentService.getStats())
+
+  const handleSurfaceClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button, a, input, select, label')) {
+      return
+    }
+    setShowControls((prev) => !prev)
+  }, [])
 
   useEffect(() => {
     setCurrentPage(savedPage)
@@ -184,6 +193,7 @@ export function ReaderScreen() {
 
   return (
     <div
+      onClick={fullscreen ? handleSurfaceClick : undefined}
       className={
         fullscreen
           ? 'fixed inset-0 z-50 flex flex-col overflow-hidden bg-zinc-950 text-zinc-100'
@@ -215,7 +225,9 @@ export function ReaderScreen() {
           </div>
         </header>
       ) : (
-        <div className="pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/60 px-3 py-2 backdrop-blur">
+        <div className={`pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/60 px-3 py-2 backdrop-blur transition-all duration-300 ${
+          showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
+        }`}>
           <Link
             to={`/comic/${dTag}`}
             className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/70 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
@@ -238,13 +250,8 @@ export function ReaderScreen() {
         </div>
       )}
 
-      {/* Pages */}
       <main
-        className={
-          fullscreen
-            ? 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden pt-16 pb-20'
-            : 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden'
-        }
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden"
       >
         <ZoomableReaderSurface
           className={fullscreen ? 'mx-auto max-w-5xl' : 'mx-auto max-w-2xl'}
@@ -273,7 +280,9 @@ export function ReaderScreen() {
       </main>
 
       {fullscreen ? (
-        <div className="absolute bottom-3 left-3 right-3 z-20 flex flex-col gap-2">
+        <div className={`absolute bottom-3 left-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300 ${
+          showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+        }`}>
           {enableWebTorrent && (
             <div className="mx-auto rounded-full bg-zinc-950/80 px-3 py-1 text-[0.65rem] text-zinc-400 font-mono backdrop-blur flex gap-3 shadow-lg border border-white/5">
               <span className="flex items-center gap-1">
@@ -313,7 +322,7 @@ export function ReaderScreen() {
           </div>
         </div>
       ) : (
-        <nav className="flex flex-col gap-4 border-t border-zinc-800 px-4 py-6">
+        <nav className="flex flex-col gap-2 border-t border-zinc-800 px-4 py-3">
           {enableWebTorrent && (
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[0.7rem] text-zinc-500 font-mono">
               <span className="flex items-center gap-1.5">
