@@ -71,7 +71,10 @@ export function ReaderScreen() {
 
   const server = chapter?.blossomServer || primaryServer() || ''
   const appOrigin = window.location.origin
-  const comicUrl = comic && dTag ? `${window.location.origin}/comic/${dTag}?pubkey=${comic.pubkey}` : ''
+  const comicUrl =
+    comic && dTag
+      ? `${window.location.origin}${import.meta.env.BASE_URL}comic/${dTag}?pubkey=${comic.pubkey}`
+      : ''
   const activeBlossomServers = useMemo(
     () => blossomServers.map((entry) => entry.url),
     [blossomServers],

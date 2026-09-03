@@ -1,6 +1,8 @@
 const SHELL_CACHE = 'mangatsu-shell-v2'
 const IMAGE_CACHE = 'mangatsu-images-v1'
-const PRECACHE_URLS = ['/', '/index.html', '/manifest.webmanifest', '/favicon.webp']
+const SCOPE_PATH = new URL('./', self.location).pathname
+const APP_SHELL_URL = `${SCOPE_PATH}index.html`
+const PRECACHE_URLS = [SCOPE_PATH, APP_SHELL_URL, `${SCOPE_PATH}manifest.webmanifest`, `${SCOPE_PATH}favicon.webp`]
 
 async function cacheRemoteImages(urls) {
   const cache = await caches.open(IMAGE_CACHE)
@@ -53,8 +55,8 @@ self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request).catch(async () => {
-        const cached = await caches.match('/index.html')
-        return cached ?? caches.match('/')
+        const cached = await caches.match(APP_SHELL_URL)
+        return cached ?? caches.match(SCOPE_PATH)
       })
     )
     return

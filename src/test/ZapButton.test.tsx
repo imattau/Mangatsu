@@ -1,6 +1,16 @@
+import type { ComponentProps } from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { ZapButton } from '../components/ZapButton'
+
+function renderZapButton(props: ComponentProps<typeof ZapButton>) {
+  return render(
+    <MemoryRouter>
+      <ZapButton {...props} />
+    </MemoryRouter>,
+  )
+}
 
 let mockConnectionString: string | null = null
 
@@ -53,13 +63,13 @@ describe('ZapButton', () => {
   })
 
   it('renders the zap button', () => {
-    render(<ZapButton authorPubkey="abc123" />)
+    renderZapButton({ authorPubkey: 'abc123' })
     expect(screen.getByLabelText('Zap')).toBeInTheDocument()
   })
 
   it('shows amount picker on click when wallet is connected', () => {
     mockConnectionString = 'nostr+walletconnect://pubkey?relay=wss://relay.example&secret=abc'
-    render(<ZapButton authorPubkey="abc123" />)
+    renderZapButton({ authorPubkey: 'abc123' })
     fireEvent.click(screen.getByLabelText('Zap'))
     expect(screen.getByText('21')).toBeInTheDocument()
     expect(screen.getByText('100')).toBeInTheDocument()
@@ -69,14 +79,14 @@ describe('ZapButton', () => {
 
   it('shows connect wallet message when no NWC configured', () => {
     mockConnectionString = null
-    render(<ZapButton authorPubkey="abc123" />)
+    renderZapButton({ authorPubkey: 'abc123' })
     fireEvent.click(screen.getByLabelText('Zap'))
     expect(screen.getByText(/Connect a Lightning wallet/i)).toBeInTheDocument()
   })
 
   it('shows confirmation dialog before paying', async () => {
     mockConnectionString = 'nostr+walletconnect://pubkey?relay=wss://relay.example&secret=abc'
-    render(<ZapButton authorPubkey="abc123" />)
+    renderZapButton({ authorPubkey: 'abc123' })
     fireEvent.click(screen.getByLabelText('Zap'))
     fireEvent.click(screen.getByText(/Zap 21 sats/i))
 
@@ -89,7 +99,7 @@ describe('ZapButton', () => {
 
   it('pays invoice after user confirms', async () => {
     mockConnectionString = 'nostr+walletconnect://pubkey?relay=wss://relay.example&secret=abc'
-    render(<ZapButton authorPubkey="abc123" />)
+    renderZapButton({ authorPubkey: 'abc123' })
     fireEvent.click(screen.getByLabelText('Zap'))
     fireEvent.click(screen.getByText(/Zap 21 sats/i))
 
@@ -106,7 +116,7 @@ describe('ZapButton', () => {
 
   it('cancels payment when user cancels confirmation', async () => {
     mockConnectionString = 'nostr+walletconnect://pubkey?relay=wss://relay.example&secret=abc'
-    render(<ZapButton authorPubkey="abc123" />)
+    renderZapButton({ authorPubkey: 'abc123' })
     fireEvent.click(screen.getByLabelText('Zap'))
     fireEvent.click(screen.getByText(/Zap 21 sats/i))
 

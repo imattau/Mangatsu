@@ -66,25 +66,28 @@ function LoginRoute() {
   )
 }
 
-export const router = createBrowserRouter([
-  { path: '/login', element: <LoginRoute /> },
-  {
-    element: <ProtectedRoute />,
-    children: [
-      {
-        element: <AppLayout />,
-        children: [
-          { path: '/', element: <LibraryScreen /> },
-          { path: '/feed', element: <FeedScreen /> },
-          { path: '/comic/:dTag', element: <ComicDetailScreen /> },
-          { path: '/comic/:dTag/chapter/:chapterId', element: <ReaderScreen /> },
-          { path: '/upload', element: <UploadScreen /> },
-          { path: '/comic/:dTag/upload', element: <UploadScreen /> },
-          { path: '/comic/:dTag/chapter/:chapterId/edit', element: <UploadScreen /> },
-          { path: '/comic/:dTag/edit', element: <UploadScreen /> },
-          { path: '/settings', element: <SettingsScreen /> },
-        ],
-      },
-    ],
-  },
-])
+export const router = createBrowserRouter(
+  [
+    { path: '/login', element: <LoginRoute /> },
+    {
+      element: <ProtectedRoute />,
+      children: [
+        {
+          element: <AppLayout />,
+          children: [
+            { path: '/', element: <LibraryScreen /> },
+            { path: '/feed', element: <FeedScreen /> },
+            { path: '/comic/:dTag', element: <ComicDetailScreen /> },
+            { path: '/comic/:dTag/chapter/:chapterId', element: <ReaderScreen /> },
+            { path: '/upload', element: <UploadScreen /> },
+            { path: '/comic/:dTag/upload', element: <UploadScreen /> },
+            { path: '/comic/:dTag/chapter/:chapterId/edit', element: <UploadScreen /> },
+            { path: '/comic/:dTag/edit', element: <UploadScreen /> },
+            { path: '/settings', element: <SettingsScreen /> },
+          ],
+        },
+      ],
+    },
+  ],
+  { basename: import.meta.env.BASE_URL },
+)

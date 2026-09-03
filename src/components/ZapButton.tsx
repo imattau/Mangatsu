@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { decode } from 'light-bolt11-decoder'
 import { bech32 } from '@scure/base'
 import type { RelayPool } from 'applesauce-relay'
@@ -194,7 +195,7 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm">
         <p className="text-zinc-400">
           Connect a Lightning wallet in{' '}
-          <a href="/settings" className="text-yellow-400 underline">Settings → Wallet (NWC)</a>{' '}
+          <Link to="/settings" className="text-yellow-400 underline">Settings → Wallet (NWC)</Link>{' '}
           to enable zapping.
         </p>
         <button onClick={() => setOpen(false)} className="mt-2 text-xs text-zinc-600 hover:text-zinc-400">
