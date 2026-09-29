@@ -53,7 +53,7 @@ jobs:
       # Its cmdline-tools bin isn't on PATH by default though, so add it.
       - name: Add Android cmdline-tools to PATH
         run: |
-          CMDLINE_TOOLS_BIN=$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 2 -name sdkmanager | sort -V | tail -1)")
+          CMDLINE_TOOLS_BIN=$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -name sdkmanager | sort -V | tail -1)")
           echo "$CMDLINE_TOOLS_BIN" >> "$GITHUB_PATH"
 
       - name: Accept Android SDK licenses
@@ -114,7 +114,7 @@ jobs:
       # Its cmdline-tools bin isn't on PATH by default though, so add it.
       - name: Add Android cmdline-tools to PATH
         run: |
-          CMDLINE_TOOLS_BIN=$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 2 -name sdkmanager | sort -V | tail -1)")
+          CMDLINE_TOOLS_BIN=$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 3 -name sdkmanager | sort -V | tail -1)")
           echo "$CMDLINE_TOOLS_BIN" >> "$GITHUB_PATH"
 
       - name: Accept Android SDK licenses
