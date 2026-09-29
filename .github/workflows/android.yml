@@ -19,6 +19,9 @@ on:
   # ad-hoc release builds without cutting a tag; pass publish_to_zapstore to
   # also re-broadcast without pushing a new tag.
 
+permissions:
+  contents: write
+
 env:
   # Pin the NDK side-by-side version tauri android init expects. Bump this (and re-check
   # `npx tauri android init` output for a version mismatch error) when upgrading @tauri-apps/cli.
