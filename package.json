@@ -8,10 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@nostr-dev-kit/ndk": "^3.0.3",
+    "@tauri-apps/api": "^2.12.0",
     "applesauce-accounts": "^6.2.0",
     "applesauce-core": "^6.1.0",
     "applesauce-factory": "^4.0.0",
@@ -36,6 +38,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
+    "@tauri-apps/cli": "^2.12.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
