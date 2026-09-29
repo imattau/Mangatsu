@@ -57,6 +57,26 @@ keytool -genkeypair -v -keystore release.keystore -alias mangatsu \
 base64 -w0 release.keystore > keystore.b64
 ```
 
+## Zapstore release
+
+Tag pushes (`v*`) also broadcast the release to [Zapstore](https://zapstore.dev/)
+(a Nostr-based app store) using [`zsp`](https://github.com/zapstore/zsp),
+configured via [`zapstore.yaml`](../zapstore.yaml) at the repo root. This
+mirrors the [imattau/scrollstr](https://github.com/imattau/scrollstr) setup
+and reuses its `ZAPSTORE_NSEC` — the same publisher identity is used across
+both apps, so followers of one on Zapstore can discover the other.
+
+Required secret: `ZAPSTORE_NSEC` (the publisher's Nostr private key, used to
+sign the release announcement event).
+
+- Automatic: any `v*` tag push builds the signed release, attaches it to a
+  GitHub Release, and immediately broadcasts it to Zapstore relays.
+- Manual re-broadcast without a new tag: `workflow_dispatch` with `release:
+  true` and `publish_to_zapstore: true`.
+- The `Validate Zapstore config` step (`zsp publish --check zapstore.yaml`)
+  runs on every release build regardless of trigger, so config mistakes
+  surface even on ad-hoc runs that don't actually publish.
+
 ## Known smoke-test checklist (first real device install)
 
 These aren't blockers for the CI/build setup, but should be verified on an

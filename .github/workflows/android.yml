@@ -9,8 +9,14 @@ on:
         description: "Build a signed release (APK + AAB) instead of just debug"
         type: boolean
         default: false
-  # Tag pushes like v1.0.0 also produce a signed release and attach it to a GitHub Release.
-  # (workflow_dispatch above covers ad-hoc release builds without cutting a tag.)
+      publish_to_zapstore:
+        description: "Also broadcast this release to Zapstore relays (only meaningful alongside an existing/new GitHub Release)"
+        type: boolean
+        default: false
+  # Tag pushes like v1.0.0 also produce a signed release, attach it to a GitHub
+  # Release, and broadcast it to Zapstore. workflow_dispatch above covers
+  # ad-hoc release builds without cutting a tag; pass publish_to_zapstore to
+  # also re-broadcast without pushing a new tag.
 
 env:
   # Pin the NDK side-by-side version tauri android init expects. Bump this (and re-check
@@ -165,3 +171,28 @@ jobs:
           files: |
             src-tauri/gen/android/app/build/outputs/apk/**/*.apk
             src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install zsp
+        run: go install github.com/zapstore/zsp/cmd/zsp@latest
+
+      - name: Validate Zapstore config
+        run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          zsp publish --check zapstore.yaml
+
+      # Broadcasts to Nostr relays on a real tag push, or on a manual
+      # workflow_dispatch run when explicitly opted in via
+      # publish_to_zapstore, so an ad-hoc debug/test dispatch never
+      # re-announces a release unless that's asked for.
+      - name: Publish to Zapstore
+        if: github.event_name == 'push' || inputs.publish_to_zapstore == true
+        env:
+          SIGN_WITH: ${{ secrets.ZAPSTORE_NSEC }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          zsp publish --quiet --skip-preview zapstore.yaml

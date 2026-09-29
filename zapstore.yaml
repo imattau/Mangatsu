@@ -1,0 +1,17 @@
+repository: https://github.com/imattau/Mangatsu
+name: Mangatsu
+summary: A decentralized manga/comic reader for Nostr
+description: |
+    Mangatsu is a mobile-first comic and manga reader built on the Nostr
+    protocol. Comics are stored on Blossom servers, and their metadata —
+    titles, chapters, and reading progress — lives on Nostr relays, so your
+    library isn't locked to any single platform.
+license: LGPL-2.1-or-later
+website: https://github.com/imattau/Mangatsu
+icon: src-tauri/icons/icon.png
+release_source: https://github.com/imattau/Mangatsu
+metadata_sources: []
+# zsp metadata guidance
+# Add any of these optional fields when they are available:
+# tags: [comics, manga, reader]
+# images: [https://example.com/screenshot.png]
