@@ -46,8 +46,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest runners ship with an Android SDK preinstalled (that's what
+      # ANDROID_HOME/sdkmanager already point to) — no separate SDK-setup action
+      # needed, and android-actions/setup-android@v3 fails outright since it
+      # unconditionally installs the long-removed legacy "tools" package.
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses > /dev/null
 
       - name: Install Android NDK
         run: sdkmanager --install "ndk;${{ env.ANDROID_NDK_VERSION }}"
@@ -97,8 +101,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # ubuntu-latest runners ship with an Android SDK preinstalled (that's what
+      # ANDROID_HOME/sdkmanager already point to) — no separate SDK-setup action
+      # needed, and android-actions/setup-android@v3 fails outright since it
+      # unconditionally installs the long-removed legacy "tools" package.
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses > /dev/null
 
       - name: Install Android NDK
         run: sdkmanager --install "ndk;${{ env.ANDROID_NDK_VERSION }}"
