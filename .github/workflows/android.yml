@@ -47,9 +47,15 @@ jobs:
           java-version: "17"
 
       # ubuntu-latest runners ship with an Android SDK preinstalled (that's what
-      # ANDROID_HOME/sdkmanager already point to) — no separate SDK-setup action
-      # needed, and android-actions/setup-android@v3 fails outright since it
+      # ANDROID_HOME already points to) — no separate SDK-setup action needed,
+      # and android-actions/setup-android@v3 fails outright since it
       # unconditionally installs the long-removed legacy "tools" package.
+      # Its cmdline-tools bin isn't on PATH by default though, so add it.
+      - name: Add Android cmdline-tools to PATH
+        run: |
+          CMDLINE_TOOLS_BIN=$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 2 -name sdkmanager | sort -V | tail -1)")
+          echo "$CMDLINE_TOOLS_BIN" >> "$GITHUB_PATH"
+
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses > /dev/null
 
@@ -102,9 +108,15 @@ jobs:
           java-version: "17"
 
       # ubuntu-latest runners ship with an Android SDK preinstalled (that's what
-      # ANDROID_HOME/sdkmanager already point to) — no separate SDK-setup action
-      # needed, and android-actions/setup-android@v3 fails outright since it
+      # ANDROID_HOME already points to) — no separate SDK-setup action needed,
+      # and android-actions/setup-android@v3 fails outright since it
       # unconditionally installs the long-removed legacy "tools" package.
+      # Its cmdline-tools bin isn't on PATH by default though, so add it.
+      - name: Add Android cmdline-tools to PATH
+        run: |
+          CMDLINE_TOOLS_BIN=$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -maxdepth 2 -name sdkmanager | sort -V | tail -1)")
+          echo "$CMDLINE_TOOLS_BIN" >> "$GITHUB_PATH"
+
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses > /dev/null
 
