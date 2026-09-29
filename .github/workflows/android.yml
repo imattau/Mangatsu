@@ -1,0 +1,147 @@
+name: Android build
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Build a signed release (APK + AAB) instead of just debug"
+        type: boolean
+        default: false
+  # Tag pushes like v1.0.0 also produce a signed release and attach it to a GitHub Release.
+  # (workflow_dispatch above covers ad-hoc release builds without cutting a tag.)
+
+env:
+  # Pin the NDK side-by-side version tauri android init expects. Bump this (and re-check
+  # `npx tauri android init` output for a version mismatch error) when upgrading @tauri-apps/cli.
+  ANDROID_NDK_VERSION: "27.0.12077973"
+  RUST_ANDROID_TARGETS: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+jobs:
+  build-debug:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.RUST_ANDROID_TARGETS }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: sdkmanager --install "ndk;${{ env.ANDROID_NDK_VERSION }}"
+
+      - name: Export NDK env vars
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> "$GITHUB_ENV"
+
+      - name: Initialize Android project
+        run: npx tauri android init
+
+      - name: Build debug APK
+        run: npx tauri android build --apk --debug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mangatsu-debug-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+  build-release:
+    name: Build signed release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.RUST_ANDROID_TARGETS }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: sdkmanager --install "ndk;${{ env.ANDROID_NDK_VERSION }}"
+
+      - name: Export NDK env vars
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.ANDROID_NDK_VERSION }}" >> "$GITHUB_ENV"
+
+      - name: Initialize Android project
+        run: npx tauri android init
+
+      - name: Write signing config
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          cat > src-tauri/gen/android/keystore.properties <<EOF
+          storeFile=$KEYSTORE_PATH
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build signed release APK + AAB
+        run: npx tauri android build --apk --aab
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mangatsu-release
+          path: |
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+            src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+            src-tauri/gen/android/app/build/outputs/bundle/**/*.aab
