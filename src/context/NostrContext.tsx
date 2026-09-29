@@ -260,6 +260,30 @@ export function NostrProvider({ children }: PropsWithChildren) {
         }
       }
 
+      if (resolvedMethod === 'amber') {
+        try {
+          const { AmberClipboardAccount } = await import('applesauce-accounts/accounts')
+          const { AmberClipboardSigner } = await import('applesauce-signers')
+          const account = new AmberClipboardAccount(pubkey, new AmberClipboardSigner())
+          const existing = service.accountManager.getAccountForPubkey(account.pubkey)
+          if (existing) {
+            service.accountManager.replaceAccount(existing, account)
+          } else {
+            service.accountManager.addAccount(account)
+          }
+          service.accountManager.setActive(account)
+          if (!cancelled && (pubkey !== account.pubkey || method !== 'amber')) {
+            setAuth(account.pubkey, 'amber')
+          }
+          void initSession()
+        } catch {
+          clearSession()
+          clearAuth()
+          service.accountManager.clearActive()
+        }
+        return
+      }
+
       try {
         const account = await restoreExtensionAccount()
         if (!account) {

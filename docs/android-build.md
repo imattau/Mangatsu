@@ -93,3 +93,16 @@ actual Android device/emulator before relying on the app day-to-day:
 - **Saving images from the reader**: blob-URL-based downloads
   (`URL.createObjectURL`) may need different handling in Tauri's Android
   WebView than in a normal mobile browser.
+- **Signer App login (Amber/NIP-55)**: the "Signer App" button on the Login
+  screen ([src/screens/Login/index.tsx](../src/screens/Login/index.tsx)) uses
+  applesauce-signers' `AmberClipboardSigner`, which launches the signer app
+  via `window.open('intent://...#Intent;scheme=nostrsigner;...;end')` and
+  reads the result back from the clipboard once the WebView regains focus.
+  This is the standard integration for browsers/webviews per
+  [Amber's web-apps docs](https://github.com/greenart7c3/Amber/blob/master/docs/web-apps.md),
+  but it's unverified inside Tauri's Android WebView specifically — confirm
+  the `intent://` URL actually launches Amber (rather than silently
+  no-op'ing) and that `document.visibilitychange` fires correctly when
+  switching back from Amber. If it doesn't work, the fallback is a small
+  native Kotlin Tauri plugin that calls `Intent.parseUri` + `startActivity`
+  directly instead of relying on WebView URL-scheme resolution.

@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { SerializedAccount } from 'applesauce-accounts'
 import type { NostrConnectAccountSignerData } from 'applesauce-accounts/accounts'
 
-export type AuthMethod = 'extension' | 'nsec' | 'bunker' | 'qr' | 'passkey'
+export type AuthMethod = 'extension' | 'nsec' | 'bunker' | 'qr' | 'passkey' | 'amber'
 
 interface AuthState {
   pubkey: string | null

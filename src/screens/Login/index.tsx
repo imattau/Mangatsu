@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { isTauri } from '@tauri-apps/api/core'
 import type { SerializedAccount } from 'applesauce-accounts'
 import type {
+  AmberClipboardAccount,
   ExtensionAccount,
   NostrConnectAccount,
   PrivateKeyAccount,
@@ -23,6 +24,14 @@ const NSEC_SESSION_KEY = 'mangatsu:nsec'
 // login methods on the native build rather than offering options that fail.
 const isNativeApp = isTauri()
 
+// Same support check applesauce-signers' AmberClipboardSigner uses internally:
+// any Android WebView/browser (native app or mobile Chrome on the PWA) that
+// can read the clipboard back after the signer app returns focus to us.
+const isAmberSupported =
+  typeof navigator !== 'undefined' &&
+  navigator.userAgent.includes('Android') &&
+  Boolean(navigator.clipboard?.readText)
+
 type ActiveMethod = 'none' | 'nsec' | 'bunker' | 'qr' | 'passkey'
 
 function hasNostrExtension() {
@@ -35,7 +44,12 @@ interface BunkerSession {
   connectPromise: Promise<unknown> | null
 }
 
-type LoginAccount = ExtensionAccount | PrivateKeyAccount | NostrConnectAccount | import('nostr-passkey/applesauce').PasskeyAccount
+type LoginAccount =
+  | ExtensionAccount
+  | PrivateKeyAccount
+  | NostrConnectAccount
+  | AmberClipboardAccount
+  | import('nostr-passkey/applesauce').PasskeyAccount
 
 async function commitLogin(
   account: LoginAccount,
@@ -118,6 +132,25 @@ export function LoginScreen() {
       navigate('/')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Extension login failed.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleAmber() {
+    setError(null)
+    setLoading(true)
+    try {
+      const { AmberClipboardSigner } = await import('applesauce-signers')
+      const { AmberClipboardAccount } = await import('applesauce-accounts/accounts')
+      const signer = new AmberClipboardSigner()
+      const pubkey = await signer.getPublicKey()
+      const account = new AmberClipboardAccount(pubkey, signer)
+      await commitLogin(account, 'amber', service, setAuth)
+      await initSession()
+      navigate('/')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Signer app request failed.')
     } finally {
       setLoading(false)
     }
@@ -300,6 +333,20 @@ export function LoginScreen() {
               <p className="mt-1 text-sm leading-5 text-zinc-400">Use a NIP-07 extension.</p>
             </button>
           )}
+
+          {isAmberSupported ? (
+            <button
+              type="button"
+              onClick={handleAmber}
+              disabled={loading}
+              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="text-sm font-semibold text-white">Signer App</div>
+              <p className="mt-1 text-sm leading-5 text-zinc-400">
+                Use Amber or another NIP-55 signer app.
+              </p>
+            </button>
+          ) : null}
 
           {activeMethod === 'nsec' ? (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4">
