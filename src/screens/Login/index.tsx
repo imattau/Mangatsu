@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { isTauri } from '@tauri-apps/api/core'
 import type { SerializedAccount } from 'applesauce-accounts'
 import type {
   ExtensionAccount,
@@ -16,6 +17,11 @@ import { initSession, clearSession } from '@/lib/sessionCrypto'
 import { QrCodeView } from './QrCodeView'
 
 const NSEC_SESSION_KEY = 'mangatsu:nsec'
+
+// Browser extensions (NIP-07) don't exist inside the Android app's WebView,
+// and WebAuthn passkeys aren't reliably supported there either — hide both
+// login methods on the native build rather than offering options that fail.
+const isNativeApp = isTauri()
 
 type ActiveMethod = 'none' | 'nsec' | 'bunker' | 'qr' | 'passkey'
 
@@ -283,15 +289,17 @@ export function LoginScreen() {
         ) : null}
 
         <div className="flex flex-col gap-3">
-          <button
-            type="button"
-            onClick={handleExtension}
-            disabled={loading}
-            className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <div className="text-sm font-semibold text-white">Browser Extension</div>
-            <p className="mt-1 text-sm leading-5 text-zinc-400">Use a NIP-07 extension.</p>
-          </button>
+          {isNativeApp ? null : (
+            <button
+              type="button"
+              onClick={handleExtension}
+              disabled={loading}
+              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="text-sm font-semibold text-white">Browser Extension</div>
+              <p className="mt-1 text-sm leading-5 text-zinc-400">Use a NIP-07 extension.</p>
+            </button>
+          )}
 
           {activeMethod === 'nsec' ? (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4">
@@ -399,7 +407,7 @@ export function LoginScreen() {
             </button>
           )}
 
-          {activeMethod === 'passkey' ? (
+          {isNativeApp ? null : activeMethod === 'passkey' ? (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4">
               <div className="mb-3 text-sm font-semibold text-white">Passkey</div>
               {hasPasskeyIdentity ? (
