@@ -81,6 +81,12 @@ jobs:
       - name: Initialize Android project
         run: npx tauri android init
 
+      # TEMPORARY: inspect the generated release buildType so the
+      # build-release job's Gradle-patching step can match it exactly.
+      # Remove once that patch is confirmed working.
+      - name: Debug - dump build.gradle.kts
+        run: cat src-tauri/gen/android/app/build.gradle.kts
+
       - name: Build debug APK
         run: npx tauri android build --apk --debug
 
