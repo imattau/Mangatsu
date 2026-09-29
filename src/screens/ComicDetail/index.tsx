@@ -518,7 +518,7 @@ export function ComicDetailScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 py-4 text-zinc-100">
+    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] text-zinc-100">
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-6">
         <div className="flex items-start justify-between gap-3">
           <Link

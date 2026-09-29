@@ -204,7 +204,7 @@ export function ReaderScreen() {
       }
     >
       {!fullscreen ? (
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur">
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 backdrop-blur">
           <Link
             to={`/comic/${dTag}`}
             className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
@@ -228,7 +228,7 @@ export function ReaderScreen() {
           </div>
         </header>
       ) : (
-        <div className={`pointer-events-none absolute left-3 right-3 top-3 z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/60 px-3 py-2 backdrop-blur transition-all duration-300 ${
+        <div className={`pointer-events-none absolute left-3 right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/60 px-3 py-2 backdrop-blur transition-all duration-300 ${
           showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
         }`}>
           <Link
@@ -283,7 +283,7 @@ export function ReaderScreen() {
       </main>
 
       {fullscreen ? (
-        <div className={`absolute bottom-3 left-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300 ${
+        <div className={`absolute bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300 ${
           showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}>
           {enableWebTorrent && (
@@ -325,7 +325,7 @@ export function ReaderScreen() {
           </div>
         </div>
       ) : (
-        <nav className="flex flex-col gap-2 border-t border-zinc-800 px-4 py-3">
+        <nav className="flex flex-col gap-2 border-t border-zinc-800 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
           {enableWebTorrent && (
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[0.7rem] text-zinc-500 font-mono">
               <span className="flex items-center gap-1.5">

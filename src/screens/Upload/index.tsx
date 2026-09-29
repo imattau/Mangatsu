@@ -241,7 +241,7 @@ export function UploadScreen() {
 
   if ((isEditComic && !existingComic) || (isEditChapter && !existingChapter)) {
     return (
-      <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 py-6 text-zinc-100">
+      <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-zinc-100">
         <div className="mx-auto w-full max-w-lg">
           <UploadHeader title={isEditComic ? 'Edit Comic Details' : 'Edit Chapter'} />
           <p className="text-sm text-zinc-400">Loading details…</p>
@@ -251,7 +251,7 @@ export function UploadScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 py-6 text-zinc-100">
+    <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-zinc-100">
       <div className="mx-auto w-full max-w-lg">
         <UploadHeader
           title={isNewComic ? 'Upload Comic' : isEditComic ? 'Edit Comic Details' : isEditChapter ? 'Edit Chapter' : 'Add Chapter'}
