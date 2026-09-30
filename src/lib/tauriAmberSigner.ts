@@ -11,10 +11,19 @@ import type { ISigner } from 'applesauce-signers'
  * `window.open('intent://...#Intent;scheme=nostrsigner;...;end')`, which is
  * a browser-specific syntax Chrome resolves specially. Tauri's Android
  * WebView doesn't do that resolution and fails with ERR_UNKNOWN_URL_SCHEME.
- * Launch the plain `nostrsigner:` scheme instead via Tauri's opener plugin,
- * which asks Android to resolve it as a normal registered intent filter
- * (exactly how Amber's manifest declares it) — then read the result back
- * from the clipboard the same way, once the app regains focus.
+ *
+ * Launching the plain `nostrsigner:` scheme via Tauri's stock opener plugin
+ * gets past that, but Amber then rejects the request as malformed: per
+ * https://github.com/nostr-protocol/nips/blob/master/55.md, Amber only
+ * parses request parameters from the URL's own query string when the
+ * launching Intent carries the `Browser.EXTRA_APPLICATION_ID` extra — the
+ * marker a real browser sets when it resolves an `intent://` link. Without
+ * it, Amber assumes a native-app request and looks for parameters as Intent
+ * extras instead, finds none, and rejects it. Tauri's opener plugin has no
+ * way to attach that extra, so this uses a small custom plugin
+ * (tauri-plugin-amber-opener, see src-tauri/tauri-plugin-amber-opener) that
+ * builds the Intent with it — then reads the result back from the clipboard
+ * the same way, once the app regains focus.
  */
 function buildNostrSignerUri(content: string | null, params: Record<string, string | undefined>) {
   const search = new URLSearchParams()
@@ -46,11 +55,15 @@ export class TauriAmberSigner implements ISigner {
 
   private onVisibilityChange = () => {
     if (document.visibilityState !== 'visible') return
-    if (!this.pendingRequest || !navigator.clipboard) return
+    if (!this.pendingRequest) return
     setTimeout(() => {
-      navigator.clipboard
-        .readText()
-        .then((result) => this.pendingRequest?.resolve(result))
+      // navigator.clipboard.readText() is gated by the WebView's own
+      // permission model (often denied there even though the page never
+      // prompts for it) — Tauri's native clipboard plugin reads the OS
+      // clipboard directly instead.
+      import('@tauri-apps/plugin-clipboard-manager')
+        .then(({ readText }) => readText())
+        .then((result) => this.pendingRequest?.resolve(result ?? ''))
         .catch((error) => this.pendingRequest?.reject(error))
     }, 200)
   }
@@ -65,10 +78,10 @@ export class TauriAmberSigner implements ISigner {
       this.pendingRequest.reject(new Error('Canceled'))
       this.pendingRequest = null
     }
-    const { openUrl } = await import('@tauri-apps/plugin-opener')
+    const { invoke } = await import('@tauri-apps/api/core')
     const result = await new Promise<string>((resolve, reject) => {
       this.pendingRequest = { resolve, reject }
-      openUrl(uri).catch(reject)
+      invoke('plugin:amber-opener|open_amber_url', { url: uri }).catch(reject)
     })
     if (result.length === 0) throw new Error('Empty clipboard')
     return result

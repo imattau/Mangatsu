@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-open-amber-url"
+description = "Enables the open_amber_url command without any pre-configured scope."
+commands.allow = ["open_amber_url"]
+
+[[permission]]
+identifier = "deny-open-amber-url"
+description = "Denies the open_amber_url command without any pre-configured scope."
+commands.deny = ["open_amber_url"]
