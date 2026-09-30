@@ -53,6 +53,7 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
   const blossomServers = useBlossomStore((state) => state.servers)
   const cachedUrl = useBlossomStore((state) => state.cachedHashes[hash] ?? '')
   const cachedDimensions = useBlossomStore((state) => state.cachedDimensions[hash] ?? null)
+  const setCachedHash = useBlossomStore((state) => state.setCachedHash)
   const setCachedDimensions = useBlossomStore((state) => state.setCachedDimensions)
   const resolvedDimensions = intrinsicWidth && intrinsicHeight
     ? { width: intrinsicWidth, height: intrinsicHeight }
@@ -111,6 +112,13 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
         return
       }
 
+      // A previously-successful URL is already known good (and is already
+      // candidates[0], so it's already showing) — skip re-probing every
+      // candidate server on each remount.
+      if (cachedUrlAllowed && cachedUrl) {
+        return
+      }
+
       if (torrent) {
         try {
           // Add a 1.5-second timeout for WebTorrent resolution (metadata & file fetching)
@@ -159,7 +167,7 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
         URL.revokeObjectURL(objectUrl)
       }
     }
-  }, [candidatesKey, torrent, hash])
+  }, [candidatesKey, torrent, hash, cachedUrl, cachedUrlAllowed])
 
   const handleError = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -191,14 +199,25 @@ export const BlossomImage = forwardRef<HTMLImageElement, BlossomImageProps>(func
 
   const handleLoad = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {
-      if (intrinsicWidth && intrinsicHeight) return
-      const width = e.currentTarget.naturalWidth
-      const height = e.currentTarget.naturalHeight
-      if (width > 0 && height > 0) {
-        setCachedDimensions(hash, { width, height })
+      if (!(intrinsicWidth && intrinsicHeight)) {
+        const width = e.currentTarget.naturalWidth
+        const height = e.currentTarget.naturalHeight
+        if (width > 0 && height > 0) {
+          setCachedDimensions(hash, { width, height })
+        }
+      }
+      // Remember whichever candidate actually loaded (may differ from the
+      // initially resolved one if onError advanced through the fallback
+      // chain), so remounting this component — e.g. navigating away and
+      // back — can skip re-probing every candidate server from scratch.
+      // Exclude blob:/data: URLs: object URLs get revoked on unmount and
+      // the placeholder gif is never a real source.
+      const loadedSrc = e.currentTarget.src
+      if (loadedSrc.startsWith('http://') || loadedSrc.startsWith('https://')) {
+        setCachedHash(hash, loadedSrc)
       }
     },
-    [hash, intrinsicHeight, intrinsicWidth, setCachedDimensions],
+    [hash, intrinsicHeight, intrinsicWidth, setCachedDimensions, setCachedHash],
   )
 
   return (

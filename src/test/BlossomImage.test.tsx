@@ -20,7 +20,15 @@ vi.mock('../services/WebTorrentService', () => {
 vi.mock('../lib/blossom', () => {
   return {
     probeBlossomAssetExists: vi.fn(),
-    normalizeBlossomServer: (url: string) => url,
+    // Mirrors the real implementation: origin only, so cachedUrlAllowed's
+    // comparison against server candidates works the same as in production.
+    normalizeBlossomServer: (value: string) => {
+      try {
+        return new URL(value).origin
+      } catch {
+        return value.replace(/\/$/, '')
+      }
+    },
     buildBlossomBlobUrl: (server: string, hash: string) => `${server}/${hash}`,
   }
 })
@@ -28,6 +36,11 @@ vi.mock('../lib/blossom', () => {
 describe('BlossomImage WebTorrent Integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // A prior test in this file stubs the global URL constructor without
+    // restoring it — without this, `new URL(...)` stays broken (throws) for
+    // every test that runs after it, since vi.stubGlobal persists across
+    // tests until explicitly undone.
+    vi.unstubAllGlobals()
     useBlossomStore.setState({
       servers: [],
       cachedHashes: {},
@@ -138,5 +151,35 @@ describe('BlossomImage WebTorrent Integration', () => {
 
     expect(screen.getByAltText('Legacy Page')).toHaveAttribute('width', '900')
     expect(screen.getByAltText('Legacy Page')).toHaveAttribute('height', '1500')
+  })
+
+  it('caches the resolved Blossom URL after load and skips re-probing on remount', async () => {
+    vi.mocked(webTorrentService.getResolvedBlobUrl).mockReturnValue('')
+    const probeSpy = vi.mocked(probeBlossomAssetExists).mockResolvedValue(true)
+
+    const { unmount } = render(
+      <BlossomImage hash="cover-hash" alt="Cover" server="https://blossom.example" />,
+    )
+
+    await act(async () => {
+      fireEvent.load(screen.getByAltText('Cover'))
+    })
+
+    expect(useBlossomStore.getState().cachedHashes['cover-hash']).toBe(
+      'https://blossom.example/cover-hash',
+    )
+
+    unmount()
+    probeSpy.mockClear()
+
+    await act(async () => {
+      render(<BlossomImage hash="cover-hash" alt="Cover" server="https://blossom.example" />)
+    })
+
+    // Remounting with the same hash/server should use the cached URL
+    // immediately instead of re-running the probe race against every
+    // candidate server again.
+    expect(screen.getByAltText('Cover')).toHaveAttribute('src', 'https://blossom.example/cover-hash')
+    expect(probeSpy).not.toHaveBeenCalled()
   })
 })
