@@ -35,6 +35,20 @@ const isAmberSupported =
 
 type ActiveMethod = 'none' | 'nsec' | 'bunker' | 'qr' | 'passkey'
 
+// Unlike Error, DOMException (thrown by e.g. clipboard access) and plain
+// string rejections (common from Tauri's IPC bridge) aren't `instanceof
+// Error`, so a naive check silently drops their message. Surface whatever
+// text is available instead of a generic fallback.
+function describeError(cause: unknown, fallback: string): string {
+  if (cause instanceof Error) return cause.message
+  if (typeof cause === 'string' && cause.length > 0) return cause
+  if (cause && typeof cause === 'object' && 'message' in cause) {
+    const message = (cause as { message?: unknown }).message
+    if (typeof message === 'string' && message.length > 0) return message
+  }
+  return fallback
+}
+
 function hasNostrExtension() {
   return typeof window !== 'undefined' && Boolean((window as Window & { nostr?: unknown }).nostr)
 }
@@ -163,7 +177,7 @@ export function LoginScreen() {
       await initSession()
       navigate('/')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Signer app request failed.')
+      setError(describeError(cause, 'Signer app request failed.'))
     } finally {
       setLoading(false)
     }

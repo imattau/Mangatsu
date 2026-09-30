@@ -87,6 +87,30 @@ jobs:
       - name: Apply Android launcher icons
         run: cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
 
+      # Android 11+ (API 30+) package visibility hides other apps from
+      # implicit-intent resolution unless declared here — without this,
+      # launching Amber via the nostrsigner: scheme fails with
+      # ActivityNotFoundException even when Amber is installed.
+      - name: Declare signer app intent query
+        run: |
+          python3 - <<'PY'
+          import re
+          path = "src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          content = open(path).read()
+          queries_block = '''
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="nostrsigner" />
+                  </intent>
+              </queries>
+          '''
+          match = re.search(r"<manifest[^>]*>", content)
+          assert match, "manifest opening tag not found"
+          content = content[: match.end()] + queries_block + content[match.end() :]
+          open(path, "w").write(content)
+          PY
+
       - name: Build debug APK
         run: npx tauri android build --apk --debug
 
@@ -153,6 +177,30 @@ jobs:
       # own, so without this the app ships the generic Tauri logo.
       - name: Apply Android launcher icons
         run: cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
+
+      # Android 11+ (API 30+) package visibility hides other apps from
+      # implicit-intent resolution unless declared here — without this,
+      # launching Amber via the nostrsigner: scheme fails with
+      # ActivityNotFoundException even when Amber is installed.
+      - name: Declare signer app intent query
+        run: |
+          python3 - <<'PY'
+          import re
+          path = "src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          content = open(path).read()
+          queries_block = '''
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="nostrsigner" />
+                  </intent>
+              </queries>
+          '''
+          match = re.search(r"<manifest[^>]*>", content)
+          assert match, "manifest opening tag not found"
+          content = content[: match.end()] + queries_block + content[match.end() :]
+          open(path, "w").write(content)
+          PY
 
       - name: Write signing config
         env:
