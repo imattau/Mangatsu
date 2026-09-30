@@ -10,6 +10,7 @@ import type {
   NostrConnectAccountSignerData,
 } from 'applesauce-accounts/accounts'
 import { NostrConnectSigner } from 'applesauce-signers'
+import type { TauriAmberAccount } from '@/lib/tauriAmberSigner'
 import { useNostr } from '@/context/NostrContext'
 import { BrandMark } from '@/components/BrandMark'
 import { buildRemoteSignerPermissions, buildRemoteSignerRelays } from '@/lib/remoteSigner'
@@ -49,6 +50,7 @@ type LoginAccount =
   | PrivateKeyAccount
   | NostrConnectAccount
   | AmberClipboardAccount
+  | TauriAmberAccount
   | import('nostr-passkey/applesauce').PasskeyAccount
 
 async function commitLogin(
@@ -141,11 +143,22 @@ export function LoginScreen() {
     setError(null)
     setLoading(true)
     try {
-      const { AmberClipboardSigner } = await import('applesauce-signers')
-      const { AmberClipboardAccount } = await import('applesauce-accounts/accounts')
-      const signer = new AmberClipboardSigner()
-      const pubkey = await signer.getPublicKey()
-      const account = new AmberClipboardAccount(pubkey, signer)
+      let account: AmberClipboardAccount | TauriAmberAccount
+      if (isNativeApp) {
+        // window.open('intent://...') fails with ERR_UNKNOWN_URL_SCHEME
+        // inside Tauri's Android WebView — use the opener-plugin-based
+        // signer there instead of applesauce's browser-oriented one.
+        const { TauriAmberSigner, TauriAmberAccount } = await import('@/lib/tauriAmberSigner')
+        const signer = new TauriAmberSigner()
+        const pubkey = await signer.getPublicKey()
+        account = new TauriAmberAccount(pubkey, signer)
+      } else {
+        const { AmberClipboardSigner } = await import('applesauce-signers')
+        const { AmberClipboardAccount } = await import('applesauce-accounts/accounts')
+        const signer = new AmberClipboardSigner()
+        const pubkey = await signer.getPublicKey()
+        account = new AmberClipboardAccount(pubkey, signer)
+      }
       await commitLogin(account, 'amber', service, setAuth)
       await initSession()
       navigate('/')

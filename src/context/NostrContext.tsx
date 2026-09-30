@@ -8,6 +8,7 @@ import {
   useState,
   type PropsWithChildren,
 } from 'react'
+import { isTauri } from '@tauri-apps/api/core'
 import { AccountsProvider } from 'applesauce-react/providers'
 import { EventStoreProvider } from 'applesauce-react/providers'
 import { NostrConnectSigner } from 'applesauce-signers'
@@ -262,9 +263,16 @@ export function NostrProvider({ children }: PropsWithChildren) {
 
       if (resolvedMethod === 'amber') {
         try {
-          const { AmberClipboardAccount } = await import('applesauce-accounts/accounts')
-          const { AmberClipboardSigner } = await import('applesauce-signers')
-          const account = new AmberClipboardAccount(pubkey, new AmberClipboardSigner())
+          const account = isTauri()
+            ? await (async () => {
+                const { TauriAmberSigner, TauriAmberAccount } = await import('@/lib/tauriAmberSigner')
+                return new TauriAmberAccount(pubkey, new TauriAmberSigner())
+              })()
+            : await (async () => {
+                const { AmberClipboardAccount } = await import('applesauce-accounts/accounts')
+                const { AmberClipboardSigner } = await import('applesauce-signers')
+                return new AmberClipboardAccount(pubkey, new AmberClipboardSigner())
+              })()
           const existing = service.accountManager.getAccountForPubkey(account.pubkey)
           if (existing) {
             service.accountManager.replaceAccount(existing, account)

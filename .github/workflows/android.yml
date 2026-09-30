@@ -81,6 +81,12 @@ jobs:
       - name: Initialize Android project
         run: npx tauri android init
 
+      # tauri android init scaffolds the Gradle project with Tauri's own
+      # placeholder icon — it does not apply src-tauri/icons/android/* on its
+      # own, so without this the app ships the generic Tauri logo.
+      - name: Apply Android launcher icons
+        run: cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
+
       - name: Build debug APK
         run: npx tauri android build --apk --debug
 
@@ -141,6 +147,12 @@ jobs:
 
       - name: Initialize Android project
         run: npx tauri android init
+
+      # tauri android init scaffolds the Gradle project with Tauri's own
+      # placeholder icon — it does not apply src-tauri/icons/android/* on its
+      # own, so without this the app ships the generic Tauri logo.
+      - name: Apply Android launcher icons
+        run: cp -r src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
 
       - name: Write signing config
         env:
