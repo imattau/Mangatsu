@@ -186,8 +186,15 @@ export class NostrService {
     onRelays: (urls: string[]) => void,
     onBlossomServers: (urls: string[]) => void,
   ): { unsubscribe: () => void } {
+    // Always include the bootstrap/indexer relays (DEFAULT_RELAYS, e.g.
+    // purplepag.es) alongside whatever relay list is currently cached.
+    // Otherwise, once any relay list is cached, this app only ever asks
+    // those same relays again — if the user updates their relay list from
+    // another device/app and it doesn't reach one of those, this app would
+    // never see the change.
+    const queryRelays = Array.from(new Set([...this.getRelays(), ...DEFAULT_RELAYS]))
     const source$ = this.relayPool.subscription(
-      this.getRelays(),
+      queryRelays,
       [{ kinds: [10002, 10063], authors: [pubkey] }],
       { eventStore: this.eventStore },
     )
