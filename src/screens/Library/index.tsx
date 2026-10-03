@@ -15,131 +15,21 @@ import { useReadStore } from '@/stores/readStore'
 import type { Comic } from '@/types'
 import { publishDraft } from '@/screens/Upload/publishDraft'
 import { BlossomImage } from '@/components/BlossomImage'
+import { parseComicEvent } from '@/lib/comic'
+import { Menu, RefreshCw, Settings, Upload } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
 
 const COMIC_FILTER = (pubkey: string) => [{ kinds: [30040], authors: [pubkey] }]
 const EMPTY_EVENTS: NostrEvent[] = []
-
-const UploadIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="h-4 w-4 shrink-0"
-  >
-    <path d="M12 16V4" />
-    <path d="M7 9l5-5 5 5" />
-    <path d="M4 20h16" />
-  </svg>
-)
-
-const SettingsIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="h-4 w-4 shrink-0"
-  >
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.88.34l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.34-1.88l-.05-.05A2 2 0 1 1 7.04 4.24l.05.05A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.88-.34l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-  </svg>
-)
-
-const RefreshIcon = ({ className = '' }: { className?: string }) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className={`h-4 w-4 shrink-0 ${className}`.trim()}
-  >
-    <path d="M20 11a8 8 0 1 0 2 5.3" />
-    <path d="M20 5v6h-6" />
-  </svg>
-)
-
-const HamburgerIcon = ({ open }: { open: boolean }) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="h-4 w-4 shrink-0"
-  >
-    {open ? (
-      <>
-        <path d="M6 6l12 12" />
-        <path d="M18 6L6 18" />
-      </>
-    ) : (
-      <>
-        <path d="M4 7h16" />
-        <path d="M4 12h16" />
-        <path d="M4 17h16" />
-      </>
-    )}
-  </svg>
-)
-
-function parseTag(event: NostrEvent, name: string) {
-  return event.tags.find((tag) => tag[0] === name)?.[1] ?? ''
-}
-
-function parseTagTail(event: NostrEvent, name: string, startIndex: number) {
-  const tag = event.tags.find((entry) => entry[0] === name)
-  return tag ? tag.slice(startIndex).filter(Boolean) : []
-}
-
-function parseAnyTag(event: NostrEvent, names: string[]) {
-  for (const name of names) {
-    const value = parseTag(event, name)
-    if (value) {
-      return value
-    }
-  }
-  return ''
-}
-
-function parseComicEvent(event: NostrEvent, server: string | undefined): Comic | null {
-  const dTag = parseTag(event, 'd')
-  if (!dTag) {
-    return null
-  }
-  const coverServers = [
-    ...parseTagTail(event, 'cover', 2),
-    ...parseTagTail(event, 'image', 2),
-  ]
-  const coverServer = coverServers[0] || ''
-
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    dTag,
-    title: parseTag(event, 'title') || event.content || 'Untitled',
-    author: parseTag(event, 'author'),
-    authorPubkey: parseTag(event, 'author_pubkey'),
-    description: parseTag(event, 'description') || event.content || '',
-    coverHash: parseAnyTag(event, ['cover', 'cover_hash', 'image']),
-    blossomServer: parseAnyTag(event, ['blossom', 'blossom_server']) || coverServer || server || '',
-    coverServer,
-    coverServers,
-    tags: event.tags
-      .filter((tag) => tag[0] === 't')
-      .map((tag) => tag[1])
-      .filter(Boolean),
-    nsfw: event.tags.some((tag) => tag[0] === 'content-warning'),
-    eventId: event.id,
-  }
-}
 
 function chapterLabel(dTag: string) {
   const match = dTag.match(/(\d+(?:\.\d+)?)/)
@@ -171,7 +61,6 @@ export function LibraryScreen() {
   const primaryServer = useBlossomStore((state) => state.primaryServer)
   const relayStatus = useObservableState(service.relayPool.status$)
   const [retryingComicDTag, setRetryingComicDTag] = useState<string | null>(null)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const queuedDrafts = useMemo(
     () => Object.values(draftMap).sort((a, b) => b.queuedAt - a.queuedAt),
     [draftMap],
@@ -251,7 +140,7 @@ export function LibraryScreen() {
       return null
     }
     return (
-      allComics.find((comic) => latestProgress.chapterDTag.startsWith(comic.dTag)) ?? null
+      allComics.find((comic) => latestProgress.chapterDTag.startsWith(`${comic.dTag}/`)) ?? null
     )
   }, [allComics, latestProgress])
 
@@ -272,106 +161,89 @@ export function LibraryScreen() {
     }
   }
 
+  const relayLabel = relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'
+
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] text-zinc-100">
+    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3 overflow-hidden">
             <BrandMark size="sm" showLabel={false} />
             <div className="min-w-0">
-              <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
+              <p className="text-[0.65rem] uppercase tracking-[0.45em] text-muted-foreground">Mangatsu</p>
               <h1 className="mt-2 truncate text-2xl font-semibold tracking-tight">Library</h1>
             </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <HeaderNav />
-            <Link
-              to="/upload"
-              aria-label="Upload a comic"
-              className="hidden items-center gap-1.5 rounded-full border border-zinc-700 bg-white px-3 py-1.5 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 sm:inline-flex"
-            >
-              <UploadIcon />
-              <span className="hidden sm:inline">Upload a comic</span>
-            </Link>
-            <div
-              className={`inline-flex items-center gap-2 rounded-full border bg-zinc-950/80 px-3 py-1.5 text-xs transition ${
-                relayOnline
-                  ? 'border-emerald-500/30 text-emerald-300'
-                  : 'border-rose-500/30 text-rose-300'
-              }`}
-              title={relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
+            <Button asChild size="lg" className="hidden h-9 rounded-full px-3 sm:inline-flex">
+              <Link to="/upload" aria-label="Upload a comic">
+                <Upload data-icon="inline-start" />
+                Upload a comic
+              </Link>
+            </Button>
+            <Badge
+              variant="outline"
+              title={relayLabel}
               aria-label={relayOnline ? `${onlineCount} relays online` : 'Offline cache'}
+              className={cn(
+                'h-9 gap-2 rounded-full px-3',
+                relayOnline ? 'border-emerald-500/30 text-emerald-300' : 'border-rose-500/30 text-rose-300',
+              )}
             >
-              <span
-                className={`h-2.5 w-2.5 rounded-full ${
-                  relayOnline ? 'bg-emerald-400' : 'bg-rose-400'
-                }`}
-              />
-              <span className="hidden sm:inline">
-                {relayOnline ? `${onlineCount} relay${onlineCount === 1 ? '' : 's'} online` : 'Offline cache'}
-              </span>
-            </div>
-            <button
+              <span className={cn('size-2.5 rounded-full', relayOnline ? 'bg-emerald-400' : 'bg-rose-400')} />
+              <span className="hidden sm:inline">{relayLabel}</span>
+            </Badge>
+            <Button
               type="button"
+              variant="outline"
+              size="lg"
               onClick={refreshSync}
               aria-label="Refresh relays"
               title="Refresh relays"
-              className="hidden items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white sm:inline-flex"
+              className="hidden h-9 rounded-full px-3 sm:inline-flex"
             >
-              <RefreshIcon />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
-            <Link
-              to="/settings"
-              aria-label="Settings"
-              className="hidden items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-white sm:inline-flex"
-            >
-              <SettingsIcon />
-              <span className="hidden sm:inline">Settings</span>
-            </Link>
-            <div className="relative sm:hidden">
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen((value) => !value)}
-                aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-                aria-expanded={mobileMenuOpen}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/80 text-zinc-300 transition hover:border-zinc-600 hover:text-white"
-              >
-                <HamburgerIcon open={mobileMenuOpen} />
-              </button>
-              {mobileMenuOpen && (
-                <div className="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl shadow-black/40">
-                  <Link
-                    to="/upload"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
-                  >
-                    <UploadIcon />
+              <RefreshCw data-icon="inline-start" />
+              Refresh
+            </Button>
+            <Button asChild variant="outline" size="lg" className="hidden h-9 rounded-full px-3 sm:inline-flex">
+              <Link to="/settings" aria-label="Settings">
+                <Settings data-icon="inline-start" />
+                Settings
+              </Link>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-lg"
+                  aria-label="Open menu"
+                  className="size-10 rounded-full sm:hidden"
+                >
+                  <Menu />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem asChild>
+                  <Link to="/upload">
+                    <Upload />
                     Upload
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false)
-                      refreshSync()
-                    }}
-                    className="flex w-full items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
-                  >
-                    <RefreshIcon />
-                    Refresh
-                  </button>
-                  <Link
-                    to="/settings"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
-                  >
-                    <SettingsIcon />
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={refreshSync}>
+                  <RefreshCw />
+                  Refresh
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/settings">
+                    <Settings />
                     Settings
                   </Link>
-                </div>
-              )}
-            </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
@@ -379,12 +251,12 @@ export function LibraryScreen() {
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Queued for publish</p>
-                <p className="mt-2 text-sm text-zinc-500">
+                <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">Queued for publish</p>
+                <p className="mt-2 text-sm text-muted-foreground">
                   These comics are saved locally and waiting for a successful relay publish.
                 </p>
               </div>
-              <p className="text-xs text-zinc-600">{queuedDrafts.length} queued</p>
+              <p className="text-xs text-muted-foreground/70">{queuedDrafts.length} queued</p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {queuedDrafts.map((draft) => (
@@ -400,7 +272,7 @@ export function LibraryScreen() {
         ) : null}
 
         {continueComic && latestProgress ? (
-            <section className="overflow-hidden rounded-[2rem] border border-zinc-800 bg-zinc-950/90 shadow-2xl shadow-black/30">
+          <section className="overflow-hidden rounded-[2rem] border bg-card/90 shadow-2xl shadow-black/30">
             <div className="grid gap-4 p-4 sm:grid-cols-[120px_1fr_auto] sm:items-center sm:p-5">
               <CoverImage
                 comic={continueComic}
@@ -409,53 +281,52 @@ export function LibraryScreen() {
                 servers={continueComic.coverServers}
               />
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
                   Continue Reading
                 </p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">
                   {continueComic.title}
                 </h2>
-                <p className="mt-2 text-sm text-zinc-400">
+                <p className="mt-2 text-sm text-muted-foreground">
                   {chapterLabel(latestProgress.chapterDTag)} · p.{latestProgress.page}
                 </p>
               </div>
-              <Link
-                to={`/comic/${continueComic.dTag}/chapter/${encodeURIComponent(latestProgress.chapterDTag)}`}
-                className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
-              >
-                Continue
-              </Link>
+              <Button asChild size="lg" className="h-11 rounded-full px-5">
+                <Link to={`/comic/${continueComic.dTag}/chapter/${encodeURIComponent(latestProgress.chapterDTag)}`}>
+                  Continue
+                </Link>
+              </Button>
             </div>
           </section>
         ) : null}
 
         {ownComics.length === 0 && queuedDrafts.length === 0 && savedATags.length === 0 ? (
-          <section className="flex min-h-[50vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
-            <p className="text-lg font-medium text-zinc-100">No comics yet</p>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
+          <section className="flex min-h-[50vh] flex-col items-center justify-center rounded-[2rem] border border-dashed bg-card/40 px-6 text-center">
+            <p className="text-lg font-medium">No comics yet</p>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
               Your library will appear here once your relays sync or you import comics locally.
             </p>
-              <Link
-                to="/upload"
-                className="mt-6 rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-              >
+            <Button asChild variant="outline" size="lg" className="mt-6 h-10 rounded-full px-4">
+              <Link to="/upload">
+                <Upload data-icon="inline-start" />
                 Upload a comic
               </Link>
+            </Button>
           </section>
         ) : (
           <>
             {ownComics.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">My Comics</p>
-                  <p className="text-xs text-zinc-600">{ownComics.length} total</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">My Comics</p>
+                  <p className="text-xs text-muted-foreground/70">{ownComics.length} total</p>
                 </div>
                 <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
                   {ownComics.map((comic) => (
                     <Link
                       key={comic.dTag}
                       to={`/comic/${comic.dTag}`}
-                      className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
+                      className="group flex flex-col gap-2 rounded-2xl outline-none transition hover:-translate-y-0.5 focus-visible:ring-3 focus-visible:ring-ring/50"
                     >
                       <CoverImage
                         comic={comic}
@@ -464,7 +335,7 @@ export function LibraryScreen() {
                         servers={comic.coverServers}
                       />
                       <div className="px-0.5">
-                        <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
+                        <p className="text-sm font-medium leading-5">
                           {comic.title}
                         </p>
                       </div>
@@ -476,8 +347,8 @@ export function LibraryScreen() {
             {savedEntries.length > 0 && (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Saved</p>
-                  <p className="text-xs text-zinc-600">{savedEntries.length} saved</p>
+                  <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">Saved</p>
+                  <p className="text-xs text-muted-foreground/70">{savedEntries.length} saved</p>
                 </div>
                 <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
                   {savedEntries.map((entry) => (
@@ -512,30 +383,26 @@ function QueuedComicCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[0.65rem] uppercase tracking-[0.35em] text-amber-300/80">Queued</p>
-          <h3 className="mt-2 truncate text-lg font-semibold text-zinc-100">{draft.title}</h3>
-          <p className="mt-1 truncate text-sm text-zinc-400">{draft.comicDTag}</p>
+          <h3 className="mt-2 truncate text-lg font-semibold">{draft.title}</h3>
+          <p className="mt-1 truncate text-sm text-muted-foreground">{draft.comicDTag}</p>
         </div>
-        <span className="rounded-full border border-amber-800/50 bg-amber-950/60 px-2.5 py-1 text-xs text-amber-200">
+        <Badge variant="outline" className="h-6 border-amber-800/50 bg-amber-950/60 px-2.5 text-amber-200">
           Retry pending
-        </span>
+        </Badge>
       </div>
 
-      <p className="mt-4 text-sm leading-6 text-zinc-400">
+      <p className="mt-4 text-sm leading-6 text-muted-foreground">
         {draft.lastError
           ? `Last publish error: ${draft.lastError}`
           : 'This comic is waiting for a relay acknowledgement. You can retry publish from here.'}
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={onRetry}
-          disabled={retrying}
-          className="rounded-full bg-white px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <Button type="button" size="lg" onClick={onRetry} disabled={retrying} className="h-9 rounded-full px-4">
+          <RefreshCw data-icon="inline-start" className={cn(retrying && 'animate-spin')} />
           {retrying ? 'Retrying…' : 'Retry Publish'}
-        </button>
-        <p className="text-xs text-zinc-500">
+        </Button>
+        <p className="text-xs text-muted-foreground">
           Queued since {new Date(draft.queuedAt).toLocaleString()}
         </p>
       </div>
@@ -557,7 +424,7 @@ function CoverImage({
   const className =
     size === 'hero'
       ? 'aspect-[2/3] w-full max-w-[120px] rounded-2xl object-cover shadow-lg shadow-black/20 sm:max-w-none'
-      : 'aspect-[2/3] w-full rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
+      : 'aspect-[2/3] w-full rounded-2xl object-cover bg-muted shadow-lg shadow-black/20'
 
   if (!comic.coverHash) {
     return <div className={className} />
@@ -609,7 +476,7 @@ function SavedComicCard({
   return (
     <Link
       to={href}
-      className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
+      className="group flex flex-col gap-2 rounded-2xl outline-none transition hover:-translate-y-0.5 focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       {resolvedComic ? (
         <CoverImage
@@ -619,20 +486,14 @@ function SavedComicCard({
           servers={resolvedComic.coverServers}
         />
       ) : (
-        <div className="flex aspect-[2/3] w-full items-end rounded-2xl border border-zinc-800 bg-zinc-950/80 p-3 shadow-lg shadow-black/20">
-          <div className="space-y-2">
-            <div className="h-2 w-16 rounded-full bg-zinc-800" />
-            <div className="h-3 w-24 rounded-full bg-zinc-700/80" />
-            <div className="h-2 w-20 rounded-full bg-zinc-800" />
-          </div>
-        </div>
+        <Skeleton aria-hidden="true" className="aspect-[2/3] w-full rounded-2xl" />
       )}
       <div className="px-0.5">
-        <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
+        <p className="text-sm font-medium leading-5">
           {resolvedComic?.title ?? entry.dTag}
         </p>
         {!resolvedComic ? (
-          <p className="mt-1 text-xs text-zinc-500">Loading from library sync…</p>
+          <p className="mt-1 text-xs text-muted-foreground">Loading from library sync…</p>
         ) : null}
       </div>
     </Link>
