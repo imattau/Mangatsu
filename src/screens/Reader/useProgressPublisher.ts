@@ -1,12 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNostr } from '@/context/NostrContext'
 
-const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://nos.lol',
-]
-
 const DEBOUNCE_MS = 2000
 
 export function useProgressPublisher(chapterDTag: string, currentPage: number) {
@@ -32,7 +26,9 @@ export function useProgressPublisher(chapterDTag: string, currentPage: number) {
           content: '',
         })
         const signed = await account.signer.signEvent(template)
-        service.relayPool.group(DEFAULT_RELAYS).publish(signed)
+        // The user's relays (or the defaults until their relay list loads), like every
+        // other event, so other devices reading from those relays can find it.
+        await service.publishEvent(signed)
       } catch {
         // Silently ignore publish failures — progress is already saved locally
       }
