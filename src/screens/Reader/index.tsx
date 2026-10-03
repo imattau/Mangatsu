@@ -10,6 +10,9 @@ import { ZoomableReaderSurface } from './ZoomableReaderSurface'
 import { BlossomImage } from '@/components/BlossomImage'
 import { webTorrentService } from '@/services/WebTorrentService'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react'
 
 
 function chapterNumber(dTag: string): number {
@@ -182,74 +185,106 @@ export function ReaderScreen() {
         <div className="text-center">
           <p className="text-lg font-medium text-zinc-100">Chapter not found</p>
           {dTag && (
-            <Link
-              to={`/comic/${dTag}`}
-              className="mt-4 inline-block text-sm text-indigo-400 hover:text-indigo-300"
-            >
-              ← Back to comic
-            </Link>
+            <Button asChild variant="link" className="mt-4 text-indigo-400">
+              <Link to={`/comic/${dTag}`}>
+                <ChevronLeft data-icon="inline-start" />
+                Back to comic
+              </Link>
+            </Button>
           )}
         </div>
       </div>
     )
   }
 
+  const chapterHref = (target: { dTag: string }) =>
+    `/comic/${dTag}/chapter/${encodeURIComponent(target.dTag)}${fullscreen ? '?view=full' : ''}`
+  const progressPercent = pageUrls.length > 0 ? (currentPage / pageUrls.length) * 100 : 0
+
   return (
     <div
       onClick={fullscreen ? handleSurfaceClick : undefined}
       className={
         fullscreen
-          ? 'fixed inset-0 z-50 flex flex-col overflow-hidden bg-zinc-950 text-zinc-100'
-          : 'flex h-dvh flex-col overflow-hidden bg-zinc-950 text-zinc-100'
+          ? 'fixed inset-0 z-50 flex flex-col overflow-hidden bg-background text-foreground'
+          : 'flex h-dvh flex-col overflow-hidden bg-background text-foreground'
       }
     >
       {!fullscreen ? (
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 backdrop-blur">
-          <Link
-            to={`/comic/${dTag}`}
-            className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
-          >
-            ← Back
-          </Link>
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-background/90 px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-3 backdrop-blur">
+          <Button asChild variant="outline" size="sm" className="rounded-full">
+            <Link to={`/comic/${dTag}`}>
+              <ChevronLeft data-icon="inline-start" />
+              Back
+            </Link>
+          </Button>
           <div className="flex-1 min-w-0 text-center">
             <p className="truncate text-sm font-medium">{chapter.title}</p>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <PageCounter current={currentPage} total={pageUrls.length} />
+            <Button
               type="button"
+              variant="outline"
+              size="icon-sm"
+              className="rounded-full"
+              aria-label="Fullscreen"
+              title="Fullscreen"
               onClick={() => {
                 void setFullscreenMode(true)
               }}
-              className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
             >
-              Fullscreen
-            </button>
-            <PageCounter current={currentPage} total={pageUrls.length} />
+              <Maximize2 />
+            </Button>
           </div>
         </header>
       ) : (
-        <div className={`pointer-events-none absolute left-3 right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20 flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/60 px-3 py-2 backdrop-blur transition-all duration-300 ${
-          showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
-        }`}>
-          <Link
-            to={`/comic/${dTag}`}
-            className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/70 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
-          >
-            Back
-          </Link>
-          <div className="pointer-events-none min-w-0 text-center">
-            <p className="truncate text-sm font-medium">{chapter.title}</p>
-            <p className="text-[11px] text-zinc-400">{currentPage} / {pageUrls.length}</p>
+        <div
+          inert={!showControls}
+          className={cn(
+            'pointer-events-none absolute left-3 right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20 flex flex-col overflow-hidden rounded-2xl border bg-background/70 backdrop-blur transition-all duration-300',
+            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4',
+          )}
+        >
+          <div className="flex items-center justify-between gap-2 px-2 py-2">
+            <Button asChild variant="ghost" size="icon-lg" className="pointer-events-auto rounded-full">
+              <Link to={`/comic/${dTag}`} aria-label="Back" title="Back">
+                <ArrowLeft />
+              </Link>
+            </Button>
+            <div className="min-w-0 text-center">
+              <p className="truncate text-sm font-medium">{chapter.title}</p>
+              <p className="text-[11px] tabular-nums text-muted-foreground">
+                {currentPage} / {pageUrls.length}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-lg"
+              className="pointer-events-auto rounded-full"
+              aria-label="Exit fullscreen"
+              title="Exit fullscreen"
+              onClick={() => {
+                void setFullscreenMode(false)
+              }}
+            >
+              <Minimize2 />
+            </Button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              void setFullscreenMode(false)
-            }}
-            className="pointer-events-auto rounded-full border border-white/10 bg-zinc-900/70 px-3 py-1 text-xs text-zinc-200 transition hover:border-white/25 hover:bg-zinc-800"
+          <div
+            role="progressbar"
+            aria-label="Chapter progress"
+            aria-valuemin={1}
+            aria-valuemax={pageUrls.length}
+            aria-valuenow={currentPage}
+            className="h-0.5 w-full bg-muted"
           >
-            Exit
-          </button>
+            <div
+              className="h-full bg-primary transition-[width] duration-300"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
         </div>
       )}
 
@@ -283,74 +318,48 @@ export function ReaderScreen() {
       </main>
 
       {fullscreen ? (
-        <div className={`absolute bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300 ${
-          showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
-        }`}>
-          {enableWebTorrent && (
-            <div className="mx-auto rounded-full bg-zinc-950/80 px-3 py-1 text-[0.65rem] text-zinc-400 font-mono backdrop-blur flex gap-3 shadow-lg border border-white/5">
-              <span className="flex items-center gap-1">
-                <span className={`h-1 w-1 rounded-full bg-emerald-500 ${stats.activeTorrents > 0 ? 'animate-pulse' : 'opacity-50'}`} />
-                Torrents: {stats.activeTorrents}
-              </span>
-              <span>Peers: {stats.numPeers}</span>
-              <span>DL: {(stats.downloadSpeed / 1024).toFixed(1)} KB/s</span>
-              <span>UL: {(stats.uploadSpeed / 1024).toFixed(1)} KB/s</span>
-            </div>
+        <div
+          inert={!showControls}
+          className={cn(
+            'pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] left-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300',
+            showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4',
           )}
+        >
+          {enableWebTorrent && <TorrentStats stats={stats} overlay />}
           <div className="flex items-center justify-between gap-3">
-            <div>
-              {prevChapter ? (
-                <Link
-                  to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}?view=full`}
-                  className="rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
-                >
-                  ← Prev
+            {prevChapter ? (
+              <Button asChild variant="ghost" size="lg" className="pointer-events-auto h-10 rounded-xl border bg-background/70 px-4 backdrop-blur">
+                <Link to={chapterHref(prevChapter)}>
+                  <ChevronLeft data-icon="inline-start" />
+                  Prev
                 </Link>
-              ) : (
-                <span />
-              )}
-            </div>
-            <div>
-              {nextChapter ? (
-                <Link
-                  to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}?view=full`}
-                  className="rounded-xl border border-white/10 bg-zinc-950/60 px-4 py-2 text-sm backdrop-blur transition hover:border-white/25 hover:bg-zinc-900"
-                >
-                  Next →
+              </Button>
+            ) : (
+              <span />
+            )}
+            {nextChapter ? (
+              <Button asChild variant="ghost" size="lg" className="pointer-events-auto h-10 rounded-xl border bg-background/70 px-4 backdrop-blur">
+                <Link to={chapterHref(nextChapter)}>
+                  Next
+                  <ChevronRight data-icon="inline-end" />
                 </Link>
-              ) : (
-                <span />
-              )}
-            </div>
+              </Button>
+            ) : (
+              <span />
+            )}
           </div>
         </div>
       ) : (
-        <nav className="flex flex-col gap-2 border-t border-zinc-800 px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
-          {enableWebTorrent && (
-            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[0.7rem] text-zinc-500 font-mono">
-              <span className="flex items-center gap-1.5">
-                <span className={`h-1.5 w-1.5 rounded-full bg-emerald-500 ${stats.activeTorrents > 0 ? 'animate-pulse' : 'opacity-50'}`} />
-                Active Torrents: <strong className="text-zinc-400">{stats.activeTorrents}</strong>
-              </span>
-              <span>
-                Peers: <strong className="text-zinc-400">{stats.numPeers}</strong>
-              </span>
-              <span>
-                DL: <strong className="text-zinc-400">{(stats.downloadSpeed / 1024).toFixed(1)} KB/s</strong>
-              </span>
-              <span>
-                UL: <strong className="text-zinc-400">{(stats.uploadSpeed / 1024).toFixed(1)} KB/s</strong>
-              </span>
-            </div>
-          )}
+        <nav className="flex flex-col gap-2 border-t px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+          {enableWebTorrent && <TorrentStats stats={stats} />}
           <div className="flex items-center justify-between">
             {prevChapter ? (
-              <Link
-                to={`/comic/${dTag}/chapter/${encodeURIComponent(prevChapter.dTag)}`}
-                className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
-              >
-                ← Prev
-              </Link>
+              <Button asChild variant="outline" size="lg" className="h-10 rounded-xl px-4">
+                <Link to={chapterHref(prevChapter)}>
+                  <ChevronLeft data-icon="inline-start" />
+                  Prev
+                </Link>
+              </Button>
             ) : (
               <span />
             )}
@@ -364,12 +373,12 @@ export function ReaderScreen() {
                 />
               ) : null}
               {nextChapter ? (
-                <Link
-                  to={`/comic/${dTag}/chapter/${encodeURIComponent(nextChapter.dTag)}`}
-                  className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm transition hover:border-zinc-500"
-                >
-                  Next →
-                </Link>
+                <Button asChild variant="outline" size="lg" className="h-10 rounded-xl px-4">
+                  <Link to={chapterHref(nextChapter)}>
+                    Next
+                    <ChevronRight data-icon="inline-end" />
+                  </Link>
+                </Button>
               ) : (
                 <span />
               )}
@@ -383,8 +392,34 @@ export function ReaderScreen() {
 
 function PageCounter({ current, total }: { current: number; total: number }) {
   return (
-    <span className="flex-shrink-0 rounded-full bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400">
+    <span className="flex-shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs tabular-nums text-muted-foreground">
       {current} / {total}
     </span>
+  )
+}
+
+type TorrentStatsValue = ReturnType<typeof webTorrentService.getStats>
+
+function TorrentStats({ stats, overlay = false }: { stats: TorrentStatsValue; overlay?: boolean }) {
+  const kbps = (bytes: number) => `${(bytes / 1024).toFixed(1)} KB/s`
+  const active = stats.activeTorrents > 0
+
+  return (
+    <div
+      className={cn(
+        'flex font-mono text-muted-foreground',
+        overlay
+          ? 'mx-auto gap-3 rounded-full border bg-background/80 px-3 py-1 text-[0.65rem] shadow-lg backdrop-blur'
+          : 'flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[0.7rem]',
+      )}
+    >
+      <span className="flex items-center gap-1.5">
+        <span className={cn('size-1.5 rounded-full bg-emerald-500', active ? 'animate-pulse' : 'opacity-50')} />
+        Torrents: {stats.activeTorrents}
+      </span>
+      <span>Peers: {stats.numPeers}</span>
+      <span>DL: {kbps(stats.downloadSpeed)}</span>
+      <span>UL: {kbps(stats.uploadSpeed)}</span>
+    </div>
   )
 }

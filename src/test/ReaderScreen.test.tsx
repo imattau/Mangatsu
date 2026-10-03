@@ -508,7 +508,7 @@ describe('ReaderScreen — page rendering', () => {
     const user = userEvent.setup()
     const { container } = renderReader()
 
-    await user.click(screen.getByRole('button', { name: /fullscreen/i }))
+    await user.click(screen.getByRole('button', { name: /^fullscreen$/i }))
 
     expect(container.querySelector('header')).toBeNull()
     expect(container.querySelector('nav')).toBeNull()
@@ -522,7 +522,7 @@ describe('ReaderScreen — page rendering', () => {
     expect(container.querySelector('header')).toBeNull()
     expect(container.querySelector('nav')).toBeNull()
     expect(screen.getByRole('button', { name: /exit/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /fullscreen/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^fullscreen$/i })).not.toBeInTheDocument()
   })
 
   it('defaults to fullscreen on small screens', async () => {
@@ -538,7 +538,7 @@ describe('ReaderScreen — page rendering', () => {
     await user.click(screen.getByRole('button', { name: /exit/i }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /fullscreen/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^fullscreen$/i })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /exit/i })).not.toBeInTheDocument()
     })
   })
