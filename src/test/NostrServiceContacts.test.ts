@@ -148,3 +148,46 @@ describe('NostrService.setFollow', () => {
     )
   })
 })
+
+function serverList(tags: string[][], createdAt: number): NostrEvent {
+  return finalizeEvent({ kind: 10063, created_at: createdAt, tags, content: '' }, SECRET)
+}
+
+describe('NostrService.setBlossomServer', () => {
+  it('adds a server to the existing list instead of replacing it', async () => {
+    const { service, signEvent } = setup(of(serverList([['server', 'https://a.example']], 100)))
+
+    expect(await service.setBlossomServer('https://b.example', true)).toEqual([
+      'https://a.example',
+      'https://b.example',
+    ])
+    expect(signEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 10063, tags: [['server', 'https://a.example'], ['server', 'https://b.example']] }),
+    )
+  })
+
+  it('removes a server, matching despite a trailing slash', async () => {
+    const { service, signEvent } = setup(
+      of(serverList([['server', 'https://a.example/'], ['server', 'https://b.example']], 100)),
+    )
+
+    expect(await service.setBlossomServer('https://a.example', false)).toEqual(['https://b.example'])
+    expect(signEvent).toHaveBeenCalledWith(expect.objectContaining({ tags: [['server', 'https://b.example']] }))
+  })
+
+  it('does not publish a duplicate server', async () => {
+    const { service, publishEvent } = setup(of(serverList([['server', 'https://a.example']], 100)))
+
+    expect(await service.setBlossomServer('https://A.example/', true)).toEqual(['https://a.example'])
+    expect(publishEvent).not.toHaveBeenCalled()
+  })
+
+  it('refuses to publish when the list cannot be loaded', async () => {
+    const { service, publishEvent } = setup(throwError(() => new Error('socket closed')))
+
+    await expect(service.setBlossomServer('https://b.example', true)).rejects.toThrow(
+      /could not load your blossom server list/i,
+    )
+    expect(publishEvent).not.toHaveBeenCalled()
+  })
+})

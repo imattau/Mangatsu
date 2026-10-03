@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -44,13 +44,17 @@ vi.mock('../stores/blossomStore', () => ({
   ) => sel({ servers: mockServers, setServers: mockSetServers }),
 }))
 
-const mockPublishBlossomServerList = vi.fn().mockResolvedValue(undefined)
+const mockSetBlossomServer = vi.fn<(url: string, present: boolean) => Promise<string[]>>(async () => [])
+let mockActiveAccount: object | null = null
 
 vi.mock('../context/NostrContext', () => ({
   useNostr: () => ({
     service: {
-      publishBlossomServerList: mockPublishBlossomServerList,
+      setBlossomServer: mockSetBlossomServer,
       fetchProfile: mockFetchProfile,
+      get activeAccount() {
+        return mockActiveAccount
+      },
     },
     syncGeneration: 0,
   }),
@@ -103,7 +107,8 @@ describe('SettingsScreen', () => {
     mockClearAuth.mockClear()
     mockSetServers.mockClear()
     mockNavigate.mockClear()
-    mockPublishBlossomServerList.mockClear()
+    mockSetBlossomServer.mockReset()
+    mockActiveAccount = null
     mockFetchProfile.mockClear()
     mockSetConnectionString.mockClear()
     mockShowNsfw = false
@@ -153,20 +158,27 @@ describe('SettingsScreen', () => {
     expect(mockSetServers).toHaveBeenCalledWith([{ url: 'https://server-b.example' }])
   })
 
-  it('publishes kind 10063 when a server is added', () => {
+  it('adds a server through the service when signed in and shows the merged list', async () => {
+    mockActiveAccount = {}
+    mockSetBlossomServer.mockResolvedValueOnce(['https://existing.example', 'https://new.server'])
     render(<SettingsScreen />, { wrapper: Wrapper })
     const input = screen.getByPlaceholderText('https://blossom.example')
     fireEvent.change(input, { target: { value: 'https://new.server' } })
     fireEvent.click(screen.getByText('Add'))
-    expect(mockPublishBlossomServerList).toHaveBeenCalledWith(['https://new.server'])
+    expect(mockSetBlossomServer).toHaveBeenCalledWith('https://new.server', true)
+    await waitFor(() =>
+      expect(mockSetServers).toHaveBeenCalledWith([{ url: 'https://existing.example' }, { url: 'https://new.server' }]),
+    )
   })
 
-  it('publishes kind 10063 when a server is removed', () => {
+  it('removes a server through the service when signed in', async () => {
+    mockActiveAccount = {}
+    mockSetBlossomServer.mockResolvedValueOnce(['https://server-b.example'])
     mockServers = [{ url: 'https://server-a.example' }, { url: 'https://server-b.example' }]
     render(<SettingsScreen />, { wrapper: Wrapper })
-    const removeBtn = screen.getByLabelText('Remove https://server-a.example')
-    fireEvent.click(removeBtn)
-    expect(mockPublishBlossomServerList).toHaveBeenCalledWith(['https://server-b.example'])
+    fireEvent.click(screen.getByLabelText('Remove https://server-a.example'))
+    expect(mockSetBlossomServer).toHaveBeenCalledWith('https://server-a.example', false)
+    await waitFor(() => expect(mockSetServers).toHaveBeenCalledWith([{ url: 'https://server-b.example' }]))
   })
 
   it('shows default relays', () => {

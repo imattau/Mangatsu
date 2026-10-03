@@ -106,7 +106,24 @@ export function SettingsScreen() {
     navigate('/login')
   }
 
-  function handleAddServer() {
+  async function updateServer(url: string, present: boolean) {
+    // Without a signer there is nothing to publish; keep the change on this device.
+    if (!service.activeAccount) {
+      setServers(present ? [...servers, { url }] : servers.filter((s) => s.url !== url))
+      return true
+    }
+    try {
+      // The service edits the newest list from relays, not local state (empty until it loads).
+      const urls = await service.setBlossomServer(url, present)
+      setServers(urls.map((serverUrl) => ({ url: serverUrl })))
+      return true
+    } catch (err) {
+      setUrlError(err instanceof Error ? err.message : 'Failed to update your Blossom servers')
+      return false
+    }
+  }
+
+  async function handleAddServer() {
     const url = newUrl.trim()
     if (!url) return
     try {
@@ -120,16 +137,11 @@ export function SettingsScreen() {
       return
     }
     setUrlError(null)
-    const newServers = [...servers, { url }]
-    setServers(newServers)
-    setNewUrl('')
-    service.publishBlossomServerList(newServers.map((s) => s.url)).catch(() => {})
+    if (await updateServer(url, true)) setNewUrl('')
   }
 
   function handleRemoveServer(url: string) {
-    const newServers = servers.filter((s) => s.url !== url)
-    setServers(newServers)
-    service.publishBlossomServerList(newServers.map((s) => s.url)).catch(() => {})
+    void updateServer(url, false)
   }
 
   return (
@@ -320,12 +332,12 @@ export function SettingsScreen() {
                 type="url"
                 value={newUrl}
                 onChange={(e) => { setNewUrl(e.target.value); setUrlError(null) }}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddServer()}
+                onKeyDown={(e) => e.key === 'Enter' && void handleAddServer()}
                 placeholder="https://blossom.example"
                 className="min-w-0 flex-1 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-zinc-600"
               />
               <button
-                onClick={handleAddServer}
+                onClick={() => void handleAddServer()}
                 className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
               >
                 Add

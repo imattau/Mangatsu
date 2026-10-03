@@ -11,7 +11,11 @@ import { useBlossomStore } from '@/stores/blossomStore'
 import { parseComicEvent } from '@/lib/comic'
 import { ComicIndex } from '@/services/ComicIndex'
 
-const CONTACT_LIST_TIMEOUT_MS = 8000
+const LIST_FETCH_TIMEOUT_MS = 8000
+
+function normalizeServerUrl(url: string) {
+  return url.trim().replace(/\/+$/, '').toLowerCase()
+}
 
 export class NostrService {
   eventStore = new EventStore()
@@ -19,7 +23,7 @@ export class NostrService {
   accountManager = new AccountManager()
   eventFactory = new EventFactory()
   comicIndex = new ComicIndex()
-  private contactListQueue: Promise<unknown> = Promise.resolve()
+  private listUpdateQueue: Promise<unknown> = Promise.resolve()
 
   private getRelays(): string[] {
     const { relays } = useRelayStore.getState()
@@ -313,19 +317,43 @@ export class NostrService {
     if (signed) await this.publishEvent(signed as NostrEvent)
   }
 
-  async publishBlossomServerList(serverUrls: string[]): Promise<void> {
-    const account = this.accountManager.active
-    if (!account) return
+  /**
+   * Add or remove one server from the user's Blossom server list (kind 10063), returning
+   * the resulting list. Like setFollow, this edits the newest list from relays rather than
+   * publishing local state, which is empty on a fresh device until the list loads.
+   */
+  setBlossomServer(serverUrl: string, present: boolean): Promise<string[]> {
+    return this.enqueueListUpdate(() => this.applyBlossomServer(serverUrl, present))
+  }
 
-    const template = {
-      kind: 10063,
-      tags: serverUrls.map((url) => ['server', url]),
-      content: '',
-      created_at: Math.floor(Date.now() / 1000),
+  private async applyBlossomServer(serverUrl: string, present: boolean): Promise<string[]> {
+    const account = this.accountManager.active
+    if (!account) throw new Error('Sign in to change your Blossom servers')
+
+    const base = await this.loadLatestReplaceable(10063, account.pubkey, 'Blossom server list')
+    const baseTags = base?.tags ?? []
+    const sameServer = (tag: string[]) =>
+      tag[0] === 'server' && normalizeServerUrl(tag[1] ?? '') === normalizeServerUrl(serverUrl)
+    const exists = baseTags.some(sameServer)
+
+    let tags = baseTags
+    if (present && !exists) {
+      tags = [...baseTags, ['server', serverUrl]]
+    } else if (!present && exists) {
+      tags = baseTags.filter((tag) => !sameServer(tag))
     }
 
-    const signed = await account.signer.signEvent(template)
-    await this.publishEvent(signed)
+    if (tags !== baseTags) {
+      const signed = await account.signer.signEvent({
+        kind: 10063,
+        tags,
+        content: base?.content ?? '',
+        created_at: Math.max(Math.floor(Date.now() / 1000), (base?.created_at ?? 0) + 1),
+      })
+      await this.publishEvent(signed)
+    }
+
+    return tags.filter((tag) => tag[0] === 'server' && tag[1]).map((tag) => tag[1])
   }
 
   /**
@@ -337,9 +365,13 @@ export class NostrService {
    * and never dropping relay hints, petnames, other tags or content.
    */
   setFollow(targetPubkey: string, follow: boolean): Promise<string[]> {
-    // Run one at a time so concurrent toggles each build on the previous result.
-    const run = this.contactListQueue.then(() => this.applyFollow(targetPubkey, follow))
-    this.contactListQueue = run.catch(() => undefined)
+    return this.enqueueListUpdate(() => this.applyFollow(targetPubkey, follow))
+  }
+
+  /** Run list edits one at a time so concurrent edits each build on the previous result. */
+  private enqueueListUpdate<T>(update: () => Promise<T>): Promise<T> {
+    const run = this.listUpdateQueue.then(update)
+    this.listUpdateQueue = run.catch(() => undefined)
     return run
   }
 
@@ -347,7 +379,7 @@ export class NostrService {
     const account = this.accountManager.active
     if (!account) throw new Error('Sign in to follow authors')
 
-    const base = await this.loadLatestContactList(account.pubkey)
+    const base = await this.loadLatestReplaceable(3, account.pubkey, 'contact list')
     const baseTags = base?.tags ?? []
     const isFollowing = baseTags.some((tag) => tag[0] === 'p' && tag[1] === targetPubkey)
 
@@ -372,20 +404,24 @@ export class NostrService {
   }
 
   /**
-   * Newest kind 3 for `pubkey` from relays or the local store. Throws if relays could not
-   * be reached and nothing is cached: we can't tell "no contact list" from "not loaded",
-   * and guessing wrong would wipe the user's follows.
+   * Newest replaceable event of `kind` for `pubkey` from relays or the local store. Throws
+   * if relays could not be reached and nothing is cached: we can't tell "no list" from
+   * "not loaded", and guessing wrong would wipe the user's list.
    */
-  private async loadLatestContactList(pubkey: string): Promise<NostrEvent | undefined> {
-    const cached = this.eventStore.getReplaceable(3, pubkey)
+  private async loadLatestReplaceable(
+    kind: number,
+    pubkey: string,
+    label: string,
+  ): Promise<NostrEvent | undefined> {
+    const cached = this.eventStore.getReplaceable(kind, pubkey)
     let timedOut = false
     let failed = false
     const fetched = await lastValueFrom(
       this.relayPool
-        .request(this.getRelays(), [{ kinds: [3], authors: [pubkey], limit: 1 }])
+        .request(this.getRelays(), [{ kinds: [kind], authors: [pubkey], limit: 1 }])
         .pipe(
           takeUntil(
-            timer(CONTACT_LIST_TIMEOUT_MS).pipe(
+            timer(LIST_FETCH_TIMEOUT_MS).pipe(
               tap(() => {
                 timedOut = true
               }),
@@ -408,7 +444,7 @@ export class NostrService {
       return newest
     }
     if (timedOut || failed) {
-      throw new Error('Could not load your contact list from relays. Try again.')
+      throw new Error(`Could not load your ${label} from relays. Try again.`)
     }
     return undefined
   }
