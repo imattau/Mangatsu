@@ -245,7 +245,7 @@ describe('FeedScreen', () => {
     const user = userEvent.setup()
     render(<FeedScreen />, { wrapper: Wrapper })
 
-    await user.click(screen.getByRole('button', { name: /authors/i }))
+    await user.click(screen.getByRole('tab', { name: /authors/i }))
 
     expect(await screen.findByRole('button', { name: /akira toriyama/i })).toBeInTheDocument()
   })
@@ -267,7 +267,7 @@ describe('FeedScreen', () => {
     const user = userEvent.setup()
     render(<FeedScreen />, { wrapper: Wrapper })
 
-    await user.click(screen.getByRole('button', { name: /authors/i }))
+    await user.click(screen.getByRole('tab', { name: /authors/i }))
 
     const authorCard = screen.getByRole('button', { name: /akira toriyama/i }).parentElement?.parentElement
     expect(authorCard).toBeTruthy()
@@ -277,8 +277,53 @@ describe('FeedScreen', () => {
     await user.click(followBtn)
     expect(mockSetFollow).toHaveBeenCalledWith('author-pubkey', true)
 
-    await user.click(await screen.findByRole('button', { name: /^unfollow$/i }))
+    const unfollowBtn = await within(authorCard as HTMLElement).findByRole('button', { name: /^unfollow$/i })
+    await waitFor(() => expect(unfollowBtn).toBeEnabled())
+    await user.click(unfollowBtn)
     expect(mockSetFollow).toHaveBeenLastCalledWith('author-pubkey', false)
+    expect(await within(authorCard as HTMLElement).findByRole('button', { name: /^follow$/i })).toBeEnabled()
+  })
+
+  it('reverts and explains when a follow cannot be saved', async () => {
+    mockSetFollow.mockRejectedValueOnce(new Error('Could not load your contact list from relays. Try again.'))
+    const user = userEvent.setup()
+    render(<FeedScreen />, { wrapper: Wrapper })
+
+    await user.click(screen.getByRole('tab', { name: /authors/i }))
+    const authorCard = (await screen.findByRole('button', { name: /akira toriyama/i })).parentElement
+      ?.parentElement as HTMLElement
+    await user.click(within(authorCard).getByRole('button', { name: /^follow$/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load your contact list/i)
+    expect(within(authorCard).getByRole('button', { name: /^follow$/i })).toBeEnabled()
+  })
+
+  it('keeps spaces while typing a multi-word search', async () => {
+    const user = userEvent.setup()
+    render(<FeedScreen />, { wrapper: Wrapper })
+
+    const search = screen.getByPlaceholderText(/search title/i)
+    await user.type(search, 'dragon ball')
+
+    expect(search).toHaveValue('dragon ball')
+    await waitFor(() => expect(screen.queryByText('Naruto')).not.toBeInTheDocument())
+    expect(screen.getByText('Dragon Ball')).toBeInTheDocument()
+  })
+
+  it('clears tag and search filters together', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/feed?tag=action&q=classic']}>
+        <FeedScreen />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Dragon Ball')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^clear$/i }))
+
+    expect(await screen.findByText('Naruto')).toBeInTheDocument()
+    expect(screen.queryByText(/tag:/i)).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/search title/i)).toHaveValue('')
   })
 
   it('searches by title and tags', async () => {
@@ -288,7 +333,8 @@ describe('FeedScreen', () => {
     const search = screen.getByPlaceholderText(/search title/i)
     await user.type(search, 'ninja')
 
-    expect(await screen.findByText('Naruto')).toBeInTheDocument()
-    expect(screen.queryByText('Dragon Ball')).not.toBeInTheDocument()
+    // The URL (and so the results) follow the search box after a short debounce.
+    await waitFor(() => expect(screen.queryByText('Dragon Ball')).not.toBeInTheDocument())
+    expect(screen.getByText('Naruto')).toBeInTheDocument()
   })
 })
