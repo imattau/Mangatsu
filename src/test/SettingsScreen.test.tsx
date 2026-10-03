@@ -81,11 +81,11 @@ vi.mock('../stores/relayStore', () => ({
     'wss://relay.damus.io',
     'wss://relay.primal.net',
     'wss://nos.lol',
-    'wss://relay.nostr.band',
+    'wss://relay.ditto.pub',
     'wss://purplepag.es',
   ],
   useRelayStore: (sel: (s: { relays: string[]; activeRelays: () => string[] }) => unknown) =>
-    sel({ relays: [], activeRelays: () => ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band', 'wss://purplepag.es'] }),
+    sel({ relays: [], activeRelays: () => ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.ditto.pub', 'wss://purplepag.es'] }),
 }))
 
 function Wrapper({ children }: { children: React.ReactNode }) {
