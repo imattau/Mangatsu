@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { decode } from 'light-bolt11-decoder'
 import { bech32 } from '@scure/base'
@@ -6,6 +6,11 @@ import type { RelayPool } from 'applesauce-relay'
 import { useNwcStore } from '@/stores/nwcStore'
 import { useNostr } from '@/context/NostrContext'
 import { NwcClient } from '@/lib/nwc'
+import { Zap } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 
 interface ZapButtonProps {
   authorPubkey: string
@@ -122,6 +127,23 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
     pr: string
     amountSats: number
   } | null>(null)
+  const closeTimerRef = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current)
+    },
+    [],
+  )
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen)
+    if (nextOpen) {
+      setStatus('idle')
+      setErrorMsg('')
+      setPendingInvoice(null)
+    }
+  }
 
   async function handleZap() {
     if (!connectionString) {
@@ -163,7 +185,8 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
       await pendingInvoice.nwc.payInvoice(pendingInvoice.pr)
       setPendingInvoice(null)
       setStatus('success')
-      setTimeout(() => {
+      closeTimerRef.current = window.setTimeout(() => {
+        closeTimerRef.current = null
         setOpen(false)
         setStatus('idle')
       }, 1500)
@@ -178,115 +201,125 @@ export function ZapButton({ authorPubkey }: ZapButtonProps) {
     setStatus('idle')
   }
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => { setOpen(true); setStatus('idle'); setErrorMsg('') }}
-        aria-label="Zap"
-        className="rounded-full border border-zinc-700 px-3 py-2 text-sm text-yellow-400 transition hover:border-yellow-600 hover:bg-yellow-500/10"
-      >
-        ⚡
-      </button>
-    )
-  }
+  const selectedAmount = customAmount || String(amount)
+  const busy = status === 'loading' || status === 'paying'
 
+  let content: ReactNode
   if (!connectionString || errorMsg === 'no-wallet') {
-    return (
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm">
-        <p className="text-zinc-400">
+    content = (
+      <>
+        <p className="text-muted-foreground">
           Connect a Lightning wallet in{' '}
-          <Link to="/settings" className="text-yellow-400 underline">Settings → Wallet (NWC)</Link>{' '}
+          <Link to="/settings" className="text-yellow-400 underline underline-offset-2">Settings → Wallet (NWC)</Link>{' '}
           to enable zapping.
         </p>
-        <button onClick={() => setOpen(false)} className="mt-2 text-xs text-zinc-600 hover:text-zinc-400">
+        <Button type="button" variant="ghost" size="sm" className="self-start" onClick={() => setOpen(false)}>
           Cancel
-        </button>
-      </div>
+        </Button>
+      </>
     )
-  }
-
-  if (errorMsg === 'no-lightning') {
-    return (
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm">
-        <p className="text-zinc-400">This user has no Lightning address on their profile.</p>
-        <button onClick={() => setOpen(false)} className="mt-2 text-xs text-zinc-600 hover:text-zinc-400">
+  } else if (errorMsg === 'no-lightning') {
+    content = (
+      <>
+        <p className="text-muted-foreground">This user has no Lightning address on their profile.</p>
+        <Button type="button" variant="ghost" size="sm" className="self-start" onClick={() => setOpen(false)}>
           Cancel
-        </button>
-      </div>
+        </Button>
+      </>
     )
-  }
-
-  // Payment confirmation dialog
-  if (status === 'confirming' && pendingInvoice) {
-    return (
-      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-3">
-        <p className="text-xs uppercase tracking-widest text-zinc-500">Confirm Payment</p>
-        <p className="text-sm text-zinc-300">
+  } else if ((status === 'confirming' || status === 'paying') && pendingInvoice) {
+    content = (
+      <>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">Confirm Payment</p>
+        <p>
           Pay <span className="font-semibold text-yellow-400">{pendingInvoice.amountSats} sats</span> via Lightning?
         </p>
         <div className="flex gap-2">
-          <button
-            onClick={handleCancelPay}
-            className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200"
-          >
+          <Button type="button" variant="outline" className="h-9 rounded-full px-4" disabled={busy} onClick={handleCancelPay}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            type="button"
+            className="h-9 flex-1 rounded-full bg-yellow-500 text-zinc-950 hover:bg-yellow-400"
+            disabled={busy}
             onClick={() => void handleConfirmPay()}
-            className="flex-1 rounded-full bg-yellow-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-yellow-400"
           >
-            Confirm ⚡
-          </button>
+            {status === 'paying' ? 'Paying…' : 'Confirm'}
+            <Zap data-icon="inline-end" />
+          </Button>
         </div>
-      </div>
+      </>
+    )
+  } else {
+    content = (
+      <>
+        <p id="zap-amount-label" className="text-xs uppercase tracking-widest text-muted-foreground">Zap amount (sats)</p>
+        <div role="group" aria-labelledby="zap-amount-label" className="flex flex-wrap gap-2">
+          {PRESET_AMOUNTS.map((a) => {
+            const selected = amount === a && !customAmount
+            return (
+              <Button
+                key={a}
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-pressed={selected}
+                onClick={() => { setAmount(a); setCustomAmount('') }}
+                className={cn('rounded-full px-3', selected && 'border-yellow-500 text-yellow-400 dark:border-yellow-500')}
+              >
+                {a}
+              </Button>
+            )
+          })}
+        </div>
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          placeholder="Custom amount"
+          aria-label="Custom amount in sats"
+          value={customAmount}
+          onChange={(e) => setCustomAmount(e.target.value)}
+        />
+        {status === 'error' && (
+          <p role="alert" className="text-destructive">{errorMsg}</p>
+        )}
+        {status === 'success' && <p role="status" className="text-emerald-400">Zapped! ⚡</p>}
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" className="h-9 rounded-full px-4" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            className="h-9 flex-1 rounded-full bg-yellow-500 text-zinc-950 hover:bg-yellow-400"
+            disabled={busy}
+            onClick={() => void handleZap()}
+          >
+            {status === 'loading' ? 'Preparing…' : `Zap ${selectedAmount} sats`}
+            {status !== 'loading' && <Zap data-icon="inline-end" />}
+          </Button>
+        </div>
+      </>
     )
   }
 
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 space-y-3">
-      <p className="text-xs uppercase tracking-widest text-zinc-500">Zap amount (sats)</p>
-      <div className="flex flex-wrap gap-2">
-        {PRESET_AMOUNTS.map((a) => (
-          <button
-            key={a}
-            onClick={() => { setAmount(a); setCustomAmount('') }}
-            className={`rounded-full border px-3 py-1.5 text-sm transition ${
-              amount === a && !customAmount
-                ? 'border-yellow-500 text-yellow-400'
-                : 'border-zinc-700 text-zinc-300 hover:border-zinc-500'
-            }`}
-          >
-            {a}
-          </button>
-        ))}
-      </div>
-      <input
-        type="number"
-        min={1}
-        placeholder="Custom amount"
-        value={customAmount}
-        onChange={(e) => setCustomAmount(e.target.value)}
-        className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none"
-      />
-      {status === 'error' && errorMsg !== 'no-wallet' && errorMsg !== 'no-lightning' && (
-        <p className="text-sm text-red-400">{errorMsg}</p>
-      )}
-      {status === 'success' && <p className="text-sm text-emerald-400">Zapped! ⚡</p>}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setOpen(false)}
-          className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200"
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="lg"
+          aria-label="Zap"
+          className="h-10 rounded-full px-3 text-yellow-400 hover:border-yellow-600 hover:bg-yellow-500/10 hover:text-yellow-400 dark:hover:bg-yellow-500/10 sm:px-4"
         >
-          Cancel
-        </button>
-        <button
-          onClick={() => void handleZap()}
-          disabled={status === 'loading' || status === 'paying'}
-          className="flex-1 rounded-full bg-yellow-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-yellow-400 disabled:opacity-50"
-        >
-          {status === 'loading' ? 'Preparing…' : status === 'paying' ? 'Paying…' : `Zap ${customAmount || amount} sats ⚡`}
-        </button>
-      </div>
-    </div>
+          <Zap />
+          <span className="hidden sm:inline">Zap</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="flex w-72 flex-col gap-3 text-sm">
+        {content}
+      </PopoverContent>
+    </Popover>
   )
 }
