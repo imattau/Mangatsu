@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+/* vaul injects this at runtime, but our CSP (no inline styles) blocks it; vaul's exports map hides the file. */
+@import "../node_modules/vaul/style.css";
 
 @custom-variant dark (&:is(.dark *));
 
