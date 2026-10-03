@@ -17,7 +17,6 @@ import { NostrService } from '@/services/NostrService'
 import { useAuthStore, type AuthMethod } from '@/stores/authStore'
 import { DEFAULT_RELAYS, useRelayStore } from '@/stores/relayStore'
 import { useReadStore } from '@/stores/readStore'
-import { progressFromEvent } from '@/lib/progress'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import type { Nip44Signer } from '@/lib/nip51'
@@ -347,12 +346,13 @@ export function NostrProvider({ children }: PropsWithChildren) {
   }, [pubkey, relayKey, service, syncGeneration])
 
   // Reading progress from the user's other devices. The newest position per chapter wins,
-  // so this device's own echoes and older events don't move the reader back.
+  // so this device's own echoes and older events don't move the reader back; progress the
+  // user deleted (with its comic or chapter) is removed.
   useEffect(() => {
     if (!pubkey) return
-    const sub = service.subscribeToReadingProgress(pubkey, (event) => {
-      const progress = progressFromEvent(event)
-      if (progress) useReadStore.getState().mergeRemoteProgress(progress)
+    const sub = service.subscribeToReadingProgress(pubkey, {
+      onProgress: (progress) => useReadStore.getState().mergeRemoteProgress(progress),
+      onDeleted: (chapterDTag, untilMs) => useReadStore.getState().removeDeletedProgress(chapterDTag, untilMs),
     })
     return () => sub.unsubscribe()
   }, [pubkey, relayKey, service, syncGeneration])

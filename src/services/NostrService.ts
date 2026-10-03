@@ -10,6 +10,8 @@ import { useRelayStore, DEFAULT_RELAYS } from '@/stores/relayStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { parseComicEvent } from '@/lib/comic'
 import { ComicIndex } from '@/services/ComicIndex'
+import { deletedProgressChapters, progressFromEvent } from '@/lib/progress'
+import type { ReadingProgress } from '@/types'
 import type { Nip44Signer } from '@/lib/nip51'
 
 const LIST_FETCH_TIMEOUT_MS = 8000
@@ -182,17 +184,43 @@ export class NostrService {
     })
   }
 
-  /** The user's reading progress events (kind 30301), one per chapter, from their relays. */
-  subscribeToReadingProgress(pubkey: string, onEvent: (event: NostrEvent) => void): Subscription {
+  /**
+   * The user's reading progress (kind 30301, one per chapter) and their deletion requests
+   * for it. Progress at or before a deletion is dropped whichever arrives first, because
+   * not every relay honours NIP-09 and would keep serving deleted progress.
+   */
+  subscribeToReadingProgress(
+    pubkey: string,
+    handlers: {
+      onProgress: (progress: ReadingProgress) => void
+      onDeleted: (chapterDTag: string, untilMs: number) => void
+    },
+  ): Subscription {
+    const deletedUntil = new Map<string, number>()
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30301], authors: [pubkey] }],
+      [
+        { kinds: [30301], authors: [pubkey] },
+        { kinds: [5], authors: [pubkey], '#k': ['30301'] },
+      ],
       { eventStore: this.eventStore },
     )
     return source$.subscribe({
       next: (event) => {
         this.ingestEvent(event)
-        onEvent(event)
+        if (event.kind === 5) {
+          for (const chapterDTag of deletedProgressChapters(event, pubkey)) {
+            const untilMs = event.created_at * 1000
+            deletedUntil.set(chapterDTag, Math.max(deletedUntil.get(chapterDTag) ?? 0, untilMs))
+            handlers.onDeleted(chapterDTag, untilMs)
+          }
+          return
+        }
+        if (event.pubkey !== pubkey) return
+        const progress = progressFromEvent(event)
+        if (!progress) return
+        if (progress.updatedAt <= (deletedUntil.get(progress.chapterDTag) ?? 0)) return
+        handlers.onProgress(progress)
       },
     })
   }
