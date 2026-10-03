@@ -14,10 +14,39 @@ import type { Nip44Signer } from '@/lib/nip51'
 
 const LIST_FETCH_TIMEOUT_MS = 8000
 const LIBRARY_D_TAG = 'mangatsu-library'
+const PROFILE_SEARCH_TIMEOUT_MS = 5000
+
+/**
+ * Relays that implement NIP-50 `search` for profiles (kind 0). Ordinary relays ignore the
+ * `search` field and return arbitrary profiles, so searches go only to these.
+ */
+export const SEARCH_RELAYS = ['wss://relay.ditto.pub', 'wss://search.nos.today']
+
+export interface ProfileSearchResult {
+  pubkey: string
+  displayName: string
+  nip05?: string
+  picture?: string
+}
 
 interface Nip44Methods {
   encrypt: (pubkey: string, plaintext: string) => Promise<string>
   decrypt: (pubkey: string, ciphertext: string) => Promise<string>
+}
+
+function profileFromEvent(event: NostrEvent): ProfileSearchResult {
+  try {
+    const profile = JSON.parse(event.content) as Record<string, unknown>
+    const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+    return {
+      pubkey: event.pubkey,
+      displayName: text(profile.display_name) || text(profile.name),
+      nip05: text(profile.nip05) || undefined,
+      picture: text(profile.picture) || undefined,
+    }
+  } catch {
+    return { pubkey: event.pubkey, displayName: '' }
+  }
 }
 
 function normalizeServerUrl(url: string) {
@@ -281,6 +310,37 @@ export class NostrService {
 
     this.ingestEvent(event)
     return responses
+  }
+
+  /**
+   * Find profiles by name or NIP-05 using NIP-50 search relays. Results keep the relays'
+   * relevance order, except that profiles whose name or NIP-05 contain the query come first.
+   */
+  async searchProfiles(query: string, limit = 10): Promise<ProfileSearchResult[]> {
+    const q = query.trim()
+    if (!q) return []
+    const events = await lastValueFrom(
+      this.relayPool.request(SEARCH_RELAYS, [{ kinds: [0], search: q, limit: limit * 2 }]).pipe(
+        takeUntil(timer(PROFILE_SEARCH_TIMEOUT_MS)),
+        catchError(() => EMPTY),
+        toArray(),
+      ),
+    )
+
+    // Several relays can return the same profile; keep each author's newest.
+    const newest = new Map<string, NostrEvent>()
+    for (const event of events) {
+      const seen = newest.get(event.pubkey)
+      if (!seen || event.created_at > seen.created_at) newest.set(event.pubkey, event)
+    }
+
+    const needle = q.toLowerCase()
+    const results = [...newest.values()]
+      .map(profileFromEvent)
+      .filter((profile) => profile.displayName || profile.nip05)
+    const matchesText = (profile: ProfileSearchResult) =>
+      profile.displayName.toLowerCase().includes(needle) || Boolean(profile.nip05?.toLowerCase().includes(needle))
+    return [...results.filter(matchesText), ...results.filter((profile) => !matchesText(profile))].slice(0, limit)
   }
 
   subscribeToLibraryList(

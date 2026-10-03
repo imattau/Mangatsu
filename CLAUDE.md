@@ -63,6 +63,10 @@ Screens call `service.*` directly (via `useNostr()`) and also read/write the Zus
 
 `blossom://<sha256>` is the canonical page reference in events. `BlossomImage` resolves it to `https://<server>/<sha256>` at display time, trying the chapter's servers, then the user's 10063 list, then `DEFAULT_BLOSSOM_SERVERS`, with WebTorrent as an optional fallback.
 
+### Profile search
+
+`service.searchProfiles(query)` sends a NIP-50 `search` filter to `SEARCH_RELAYS` (in `NostrService.ts`) only: ordinary relays ignore `search` and return arbitrary profiles. Check a relay's NIP-11 `supported_nips` includes 50, and that it actually returns matches, before adding it. `AuthorPubkeyInput` also resolves `name@domain` queries directly via NIP-05.
+
 ### Replaceable lists: never publish from local state
 
 Kinds 3, 10063 and 30003 are replaceable: publishing replaces the user's list in **every** Nostr client. Local state can be empty or stale (fresh device, not loaded yet), so a list built from it can wipe the user's data. Edit lists through the `NostrService` helpers, which load the newest event from relays (falling back to the local store), change one entry, keep all other tags and `content`, refuse to publish if the list can't be loaded, and serialize concurrent edits:
