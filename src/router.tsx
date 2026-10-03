@@ -3,14 +3,24 @@ import { Suspense, lazy, useEffect, useState } from 'react'
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom'
 import { AppLayout } from '@/components/AppLayout'
 import { useAuthStore } from '@/stores/authStore'
-import { ReaderScreen } from '@/screens/Reader'
 
 const LoginScreen = lazy(() => import('@/screens/Login').then((module) => ({ default: module.LoginScreen })))
 const LibraryScreen = lazy(() => import('@/screens/Library').then((module) => ({ default: module.LibraryScreen })))
 const ComicDetailScreen = lazy(() => import('@/screens/ComicDetail').then((module) => ({ default: module.ComicDetailScreen })))
+const loadReader = () => import('@/screens/Reader')
+const ReaderScreen = lazy(() => loadReader().then((module) => ({ default: module.ReaderScreen })))
 const UploadScreen = lazy(() => import('@/screens/Upload').then((module) => ({ default: module.UploadScreen })))
 const SettingsScreen = lazy(() => import('@/screens/Settings').then((module) => ({ default: module.SettingsScreen })))
 const FeedScreen = lazy(() => import('@/screens/Feed').then((module) => ({ default: module.FeedScreen })))
+
+// Downloaded chapters must open offline, and the service worker only caches chunks it has
+// fetched. Warm the Reader chunk once the app is idle so it is cached on the first online visit.
+if (typeof window !== 'undefined') {
+  const whenIdle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 2000))
+  whenIdle(() => {
+    void loadReader().catch(() => {})
+  })
+}
 
 function RouteFallback() {
   return (
