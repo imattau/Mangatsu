@@ -16,6 +16,8 @@ import { ExtensionAccount, NostrConnectAccount, PrivateKeyAccount } from 'apples
 import { NostrService } from '@/services/NostrService'
 import { useAuthStore, type AuthMethod } from '@/stores/authStore'
 import { DEFAULT_RELAYS, useRelayStore } from '@/stores/relayStore'
+import { useReadStore } from '@/stores/readStore'
+import { progressFromEvent } from '@/lib/progress'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import type { Nip44Signer } from '@/lib/nip51'
@@ -341,6 +343,17 @@ export function NostrProvider({ children }: PropsWithChildren) {
       },
       (urls) => useBlossomStore.getState().setServers(urls.map((url) => ({ url }))),
     )
+    return () => sub.unsubscribe()
+  }, [pubkey, relayKey, service, syncGeneration])
+
+  // Reading progress from the user's other devices. The newest position per chapter wins,
+  // so this device's own echoes and older events don't move the reader back.
+  useEffect(() => {
+    if (!pubkey) return
+    const sub = service.subscribeToReadingProgress(pubkey, (event) => {
+      const progress = progressFromEvent(event)
+      if (progress) useReadStore.getState().mergeRemoteProgress(progress)
+    })
     return () => sub.unsubscribe()
   }, [pubkey, relayKey, service, syncGeneration])
 

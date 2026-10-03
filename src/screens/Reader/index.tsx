@@ -108,9 +108,17 @@ export function ReaderScreen() {
     [cachedHashes, chapter, server],
   )
 
-  const [currentPage, setCurrentPage] = useState(1)
-  const [showControls, setShowControls] = useState(true)
   const savedPage = useReadStore((s) => s.progress[chapterDTag]?.page ?? 1)
+  const [currentPage, setCurrentPage] = useState(savedPage)
+  const [pageChapter, setPageChapter] = useState(chapterDTag)
+  const [showControls, setShowControls] = useState(true)
+
+  // Restore the saved page when a chapter opens. Later changes to savedPage (this device's
+  // own saves, or progress synced from another device) must not move the open chapter.
+  if (pageChapter !== chapterDTag) {
+    setPageChapter(chapterDTag)
+    setCurrentPage(savedPage)
+  }
   const enableWebTorrent = useSettingsStore((s) => s.enableWebTorrent)
   const [stats, setStats] = useState(() => webTorrentService.getStats())
 
@@ -122,10 +130,6 @@ export function ReaderScreen() {
     }
     setShowControls((prev) => !prev)
   }, [])
-
-  useEffect(() => {
-    setCurrentPage(savedPage)
-  }, [chapterDTag, savedPage])
 
   useEffect(() => {
     return () => {

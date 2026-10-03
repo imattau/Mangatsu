@@ -182,6 +182,21 @@ export class NostrService {
     })
   }
 
+  /** The user's reading progress events (kind 30301), one per chapter, from their relays. */
+  subscribeToReadingProgress(pubkey: string, onEvent: (event: NostrEvent) => void): Subscription {
+    const source$ = this.relayPool.subscription(
+      this.getRelays(),
+      [{ kinds: [30301], authors: [pubkey] }],
+      { eventStore: this.eventStore },
+    )
+    return source$.subscribe({
+      next: (event) => {
+        this.ingestEvent(event)
+        onEvent(event)
+      },
+    })
+  }
+
   subscribeToForeignComic(
     pubkey: string,
     dTag: string,
