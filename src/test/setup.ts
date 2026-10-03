@@ -8,3 +8,10 @@ if (typeof IntersectionObserver === 'undefined') {
     disconnect() {}
   } as unknown as typeof IntersectionObserver
 }
+
+// jsdom lacks pointer capture; vaul (Drawer) calls it on pointerdown
+if (typeof Element.prototype.setPointerCapture !== 'function') {
+  Element.prototype.setPointerCapture = () => {}
+  Element.prototype.releasePointerCapture = () => {}
+  Element.prototype.hasPointerCapture = () => false
+}

@@ -12,7 +12,8 @@ import { webTorrentService } from '@/services/WebTorrentService'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, ListOrdered, Maximize2, Minimize2 } from 'lucide-react'
+import { ChapterListDrawer } from './ChapterListDrawer'
 
 
 function chapterNumber(dTag: string): number {
@@ -115,7 +116,8 @@ export function ReaderScreen() {
 
   const handleSurfaceClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement
-    if (target.closest('button, a, input, select, label')) {
+    // Portaled content (e.g. the chapter drawer) bubbles through React but isn't in this subtree.
+    if (!e.currentTarget.contains(target) || target.closest('button, a, input, select, label')) {
       return
     }
     setShowControls((prev) => !prev)
@@ -223,6 +225,23 @@ export function ReaderScreen() {
           </div>
           <div className="flex items-center gap-2">
             <PageCounter current={currentPage} total={pageUrls.length} />
+            <ChapterListDrawer
+              comicTitle={comic?.title}
+              chapters={allChapters}
+              currentDTag={chapterDTag}
+              chapterHref={chapterHref}
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className="rounded-full"
+                aria-label="Chapters"
+                title="Chapters"
+              >
+                <ListOrdered />
+              </Button>
+            </ChapterListDrawer>
             <Button
               type="button"
               variant="outline"
@@ -258,19 +277,38 @@ export function ReaderScreen() {
                 {currentPage} / {pageUrls.length}
               </p>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-lg"
-              className="pointer-events-auto rounded-full"
-              aria-label="Exit fullscreen"
-              title="Exit fullscreen"
-              onClick={() => {
-                void setFullscreenMode(false)
-              }}
-            >
-              <Minimize2 />
-            </Button>
+            <div className="flex items-center">
+              <ChapterListDrawer
+                comicTitle={comic?.title}
+                chapters={allChapters}
+                currentDTag={chapterDTag}
+                chapterHref={chapterHref}
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-lg"
+                  className="pointer-events-auto rounded-full"
+                  aria-label="Chapters"
+                  title="Chapters"
+                >
+                  <ListOrdered />
+                </Button>
+              </ChapterListDrawer>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-lg"
+                className="pointer-events-auto rounded-full"
+                aria-label="Exit fullscreen"
+                title="Exit fullscreen"
+                onClick={() => {
+                  void setFullscreenMode(false)
+                }}
+              >
+                <Minimize2 />
+              </Button>
+            </div>
           </div>
           <div
             role="progressbar"
