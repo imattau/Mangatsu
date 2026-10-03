@@ -1,6 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { SettingsScreen } from '../screens/Settings'
 import type { BlossomServer } from '../types'
@@ -44,13 +44,17 @@ vi.mock('../stores/blossomStore', () => ({
   ) => sel({ servers: mockServers, setServers: mockSetServers }),
 }))
 
-const mockPublishBlossomServerList = vi.fn().mockResolvedValue(undefined)
+const mockSetBlossomServer = vi.fn<(url: string, present: boolean) => Promise<string[]>>(async () => [])
+let mockActiveAccount: object | null = null
 
 vi.mock('../context/NostrContext', () => ({
   useNostr: () => ({
     service: {
-      publishBlossomServerList: mockPublishBlossomServerList,
+      setBlossomServer: mockSetBlossomServer,
       fetchProfile: mockFetchProfile,
+      get activeAccount() {
+        return mockActiveAccount
+      },
     },
     syncGeneration: 0,
   }),
@@ -103,7 +107,8 @@ describe('SettingsScreen', () => {
     mockClearAuth.mockClear()
     mockSetServers.mockClear()
     mockNavigate.mockClear()
-    mockPublishBlossomServerList.mockClear()
+    mockSetBlossomServer.mockReset()
+    mockActiveAccount = null
     mockFetchProfile.mockClear()
     mockSetConnectionString.mockClear()
     mockShowNsfw = false
@@ -121,6 +126,18 @@ describe('SettingsScreen', () => {
   })
 
   it('renders account profile avatar and username when available', async () => {
+    // Radix Avatar only shows the image once it has loaded; jsdom never loads images.
+    class LoadedImage extends EventTarget {
+      complete = false
+      naturalWidth = 1
+      set src(_value: string) {
+        queueMicrotask(() => {
+          this.complete = true
+          this.dispatchEvent(new Event('load'))
+        })
+      }
+    }
+    vi.stubGlobal('Image', LoadedImage)
     render(<SettingsScreen />, { wrapper: Wrapper })
 
     expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument()
@@ -130,11 +147,25 @@ describe('SettingsScreen', () => {
     )
   })
 
-  it('sign out clears auth and navigates to /login', () => {
+  it('sign out asks for confirmation, then clears auth and navigates to /login', async () => {
+    const user = userEvent.setup()
     render(<SettingsScreen />, { wrapper: Wrapper })
-    fireEvent.click(screen.getByText('Sign out'))
+    await user.click(screen.getByRole('button', { name: /sign out/i }))
+    expect(mockClearAuth).not.toHaveBeenCalled()
+
+    const dialog = await screen.findByRole('alertdialog', { name: /sign out of mangatsu/i })
+    await user.click(within(dialog).getByRole('button', { name: /sign out/i }))
     expect(mockClearAuth).toHaveBeenCalledOnce()
     expect(mockNavigate).toHaveBeenCalledWith('/login')
+  })
+
+  it('cancelling sign out keeps the session', async () => {
+    const user = userEvent.setup()
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    await user.click(screen.getByRole('button', { name: /sign out/i }))
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: /cancel/i }))
+    expect(mockClearAuth).not.toHaveBeenCalled()
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 
   it('can add a blossom server', () => {
@@ -153,20 +184,50 @@ describe('SettingsScreen', () => {
     expect(mockSetServers).toHaveBeenCalledWith([{ url: 'https://server-b.example' }])
   })
 
-  it('publishes kind 10063 when a server is added', () => {
+  it('adds a server through the service when signed in and shows the merged list', async () => {
+    mockActiveAccount = {}
+    mockSetBlossomServer.mockResolvedValueOnce(['https://existing.example', 'https://new.server'])
     render(<SettingsScreen />, { wrapper: Wrapper })
     const input = screen.getByPlaceholderText('https://blossom.example')
     fireEvent.change(input, { target: { value: 'https://new.server' } })
     fireEvent.click(screen.getByText('Add'))
-    expect(mockPublishBlossomServerList).toHaveBeenCalledWith(['https://new.server'])
+    expect(mockSetBlossomServer).toHaveBeenCalledWith('https://new.server', true)
+    await waitFor(() =>
+      expect(mockSetServers).toHaveBeenCalledWith([{ url: 'https://existing.example' }, { url: 'https://new.server' }]),
+    )
   })
 
-  it('publishes kind 10063 when a server is removed', () => {
+  it('removes a server through the service when signed in', async () => {
+    mockActiveAccount = {}
+    mockSetBlossomServer.mockResolvedValueOnce(['https://server-b.example'])
     mockServers = [{ url: 'https://server-a.example' }, { url: 'https://server-b.example' }]
     render(<SettingsScreen />, { wrapper: Wrapper })
-    const removeBtn = screen.getByLabelText('Remove https://server-a.example')
-    fireEvent.click(removeBtn)
-    expect(mockPublishBlossomServerList).toHaveBeenCalledWith(['https://server-b.example'])
+    fireEvent.click(screen.getByLabelText('Remove https://server-a.example'))
+    expect(mockSetBlossomServer).toHaveBeenCalledWith('https://server-a.example', false)
+    await waitFor(() => expect(mockSetServers).toHaveBeenCalledWith([{ url: 'https://server-b.example' }]))
+  })
+
+  it('keeps the typed server and shows the error when the list cannot be updated', async () => {
+    mockActiveAccount = {}
+    mockSetBlossomServer.mockRejectedValueOnce(new Error('Could not load your Blossom server list from relays. Try again.'))
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    const input = screen.getByPlaceholderText('https://blossom.example')
+    fireEvent.change(input, { target: { value: 'https://new.server' } })
+    fireEvent.click(screen.getByText('Add'))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not load your blossom server list/i)
+    expect(input).toHaveValue('https://new.server')
+    expect(mockSetServers).not.toHaveBeenCalled()
+  })
+
+  it('rejects a duplicate server', () => {
+    mockServers = [{ url: 'https://server-a.example' }]
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    fireEvent.change(screen.getByPlaceholderText('https://blossom.example'), {
+      target: { value: 'https://server-a.example/' },
+    })
+    fireEvent.click(screen.getByText('Add'))
+    expect(screen.getByRole('alert')).toHaveTextContent(/already in your list/i)
+    expect(mockSetServers).not.toHaveBeenCalled()
   })
 
   it('shows default relays', () => {
@@ -210,8 +271,20 @@ describe('SettingsScreen', () => {
   it('toggling NSFW calls setShowNsfw', async () => {
     const user = userEvent.setup()
     render(<SettingsScreen />, { wrapper: Wrapper })
-    const toggle = screen.getByRole('checkbox', { name: /show nsfw content/i })
+    const toggle = screen.getByRole('switch', { name: /show nsfw content/i })
     await user.click(toggle)
     expect(mockSetShowNsfw).toHaveBeenCalledWith(true)
   })
+
+  it('rejects an invalid wallet connection string', () => {
+    render(<SettingsScreen />, { wrapper: Wrapper })
+    fireEvent.change(screen.getByTestId('nwc-input'), { target: { value: 'https://not-a-wallet.example' } })
+    fireEvent.click(screen.getByText('Save'))
+    expect(screen.getByRole('alert')).toHaveTextContent(/nostr\+walletconnect/i)
+    expect(mockSetConnectionString).not.toHaveBeenCalled()
+  })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
