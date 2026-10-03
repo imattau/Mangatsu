@@ -7,6 +7,8 @@ import { MAX_CHAPTER_PAGES } from './limits'
 import type { UploadArtifact } from './publishDraft'
 import { BLOSSOM_UPLOAD_TIMEOUT_MS, uploadFileToServers } from './uploadHelpers'
 import { webTorrentService } from '@/services/WebTorrentService'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 
 export interface ServerResult {
   url: string
@@ -128,6 +130,8 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     setRunning(true)
     setError('')
     setPhase('idle')
+    // A retry uploads everything again, so the count must start over too.
+    setUploaded(0)
 
     if (pages.length > MAX_CHAPTER_PAGES) {
       setError(
@@ -208,52 +212,46 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
 
   const percent = total > 0 ? Math.round((uploaded / total) * 100) : 0
 
+  const statusLabel = running
+    ? phase === 'converting'
+      ? `Converting ${uploaded + 1} of ${total}...`
+      : `Uploading ${uploaded + 1} of ${total}...`
+    : uploaded === total
+      ? 'Upload complete'
+      : error
+        ? 'Upload stopped'
+        : 'Ready'
+
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-zinc-100">Step 3 — Uploading</h2>
+      <h2 className="text-lg font-semibold">Uploading</h2>
 
       <div className="space-y-2">
-        <div className="flex justify-between text-sm text-zinc-400">
-          <span>
-            {running
-              ? phase === 'converting'
-                ? `Converting ${uploaded + 1} of ${total}...`
-                : `Uploading ${uploaded + 1} of ${total}...`
-              : uploaded === total
-              ? 'Upload complete'
-              : 'Ready'}
-          </span>
-          <span>{percent}%</span>
+        <div className="flex justify-between text-sm text-muted-foreground">
+          <span aria-live="polite">{statusLabel}</span>
+          <span className="tabular-nums">{percent}%</span>
         </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
-          <div
-            className="h-full rounded-full bg-white transition-all duration-300"
-            style={{ width: `${percent}%` }}
-          />
-        </div>
+        <Progress value={percent} aria-label="Upload progress" className="h-2" />
       </div>
 
       {error && (
         <div className="space-y-3">
-          <p className="text-sm text-red-400">{error}</p>
+          <p role="alert" className="text-sm text-destructive">{error}</p>
           <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="rounded-full border border-zinc-700 px-5 py-3 text-sm text-zinc-300 transition hover:border-zinc-500"
-            >
+            <Button type="button" variant="outline" size="lg" onClick={onBack} className="h-11 rounded-full px-5">
               Back
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="lg"
               onClick={() => {
                 ranRef.current = false
                 void run()
               }}
-              className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
+              className="h-11 flex-1 rounded-full"
             >
               Retry
-            </button>
+            </Button>
           </div>
         </div>
       )}

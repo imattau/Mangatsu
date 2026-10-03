@@ -15,3 +15,12 @@ if (typeof Element !== 'undefined' && typeof Element.prototype.setPointerCapture
   Element.prototype.releasePointerCapture = () => {}
   Element.prototype.hasPointerCapture = () => false
 }
+
+// jsdom lacks ResizeObserver; Radix (e.g. Checkbox) measures elements with it
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+}

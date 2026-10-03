@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { useNostr } from '@/context/NostrContext'
 import { usePublishQueueStore } from '@/stores/publishQueueStore'
 import { publishDraft } from './publishDraft'
+import { CircleCheck, CloudOff } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 interface DoneStepProps {
   comicDTag: string
@@ -35,12 +37,18 @@ export function DoneStep({ comicDTag, onUploadAnother }: DoneStepProps) {
 
   const queued = Boolean(pendingDraft)
 
+  const StatusIcon = queued ? CloudOff : CircleCheck
+
   return (
     <div className="space-y-6 text-center">
-      <h2 className="text-2xl font-semibold text-zinc-100">
+      <StatusIcon
+        aria-hidden="true"
+        className={queued ? 'mx-auto size-10 text-amber-300' : 'mx-auto size-10 text-emerald-400'}
+      />
+      <h2 role="status" className="text-2xl font-semibold">
         {queued ? 'Saved offline' : 'Published!'}
       </h2>
-      <p className="text-sm text-zinc-400">
+      <p className="text-sm text-muted-foreground">
         {queued
           ? 'The Blossom upload completed, but publishing to Nostr is queued locally until you retry.'
           : 'Your comic has been published to the Nostr network.'}
@@ -49,37 +57,31 @@ export function DoneStep({ comicDTag, onUploadAnother }: DoneStepProps) {
       {queued && pendingDraft?.lastError ? (
         <p className="text-sm text-amber-200">Last publish error: {pendingDraft.lastError}</p>
       ) : null}
-      {retryError ? <p className="text-sm text-red-400">{retryError}</p> : null}
+      {retryError ? <p role="alert" className="text-sm text-destructive">{retryError}</p> : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
         {queued ? (
-          <button
+          <Button
             type="button"
+            size="lg"
             onClick={() => void handleRetry()}
             disabled={retrying}
-            className="rounded-full bg-white px-6 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-11 rounded-full px-6"
           >
             {retrying ? 'Retrying…' : 'Retry Publish'}
-          </button>
+          </Button>
         ) : (
-          <Link
-            to={`/comic/${comicDTag}`}
-            className="rounded-full bg-white px-6 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
-          >
-            View Comic
-          </Link>
+          <Button asChild size="lg" className="h-11 rounded-full px-6">
+            <Link to={`/comic/${comicDTag}`}>View Comic</Link>
+          </Button>
         )}
-        <button
-          type="button"
-          onClick={onUploadAnother}
-          className="rounded-full border border-zinc-700 px-6 py-3 text-sm text-zinc-300 transition hover:border-zinc-500"
-        >
+        <Button type="button" variant="outline" size="lg" onClick={onUploadAnother} className="h-11 rounded-full px-6">
           Upload Another
-        </button>
+        </Button>
       </div>
 
       {!queued ? null : (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           Once publish succeeds, the queue entry is cleared and the comic will be available normally.
         </p>
       )}

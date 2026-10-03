@@ -1,4 +1,13 @@
+import { useEffect, useId, useMemo } from 'react'
+import { ImagePlus } from 'lucide-react'
 import { AuthorPubkeyInput } from './AuthorPubkeyInput'
+import { FilePicker } from './FilePicker'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 export interface MetadataFormValues {
   title: string
@@ -20,48 +29,64 @@ interface MetadataStepProps {
   allowFirstPage?: boolean
 }
 
-function inputClass(extra = '') {
-  return `w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none ${extra}`
-}
-
 export function MetadataStep({ values, onChange, onNext, allowFirstPage = true }: MetadataStepProps) {
+  const id = useId()
+  const fieldId = (name: string) => `${id}-${name}`
+
   function set<K extends keyof MetadataFormValues>(key: K, val: MetadataFormValues[K]) {
     onChange({ ...values, [key]: val })
   }
 
-  function handleCoverFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null
-    onChange({ ...values, coverFile: file, coverMode: file ? 'file' : values.coverMode })
+  function handleCoverFile(file: File) {
+    onChange({ ...values, coverFile: file, coverMode: 'file' })
   }
+
+  // One object URL per chosen file (not per render), released when the file changes.
+  const coverPreviewUrl = useMemo(
+    () => (values.coverFile ? URL.createObjectURL(values.coverFile) : null),
+    [values.coverFile],
+  )
+  useEffect(
+    () => () => {
+      if (coverPreviewUrl) URL.revokeObjectURL(coverPreviewUrl)
+    },
+    [coverPreviewUrl],
+  )
 
   const canProceed = values.title.trim().length > 0
 
   return (
-    <div className="space-y-5">
-      <h2 className="text-lg font-semibold text-zinc-100">Step 1 — Comic Details</h2>
+    <form
+      className="space-y-5"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (canProceed) onNext()
+      }}
+    >
+      <h2 className="text-lg font-semibold">Comic Details</h2>
 
-      <div className="space-y-1">
-        <label className="text-sm text-zinc-400">
-          Title <span className="text-red-400">*</span>
-        </label>
-        <input
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId('title')}>
+          Title <span aria-hidden="true" className="text-destructive">*</span>
+        </Label>
+        <Input
+          id={fieldId('title')}
           type="text"
           placeholder="My Amazing Manga"
           value={values.title}
           onChange={(e) => set('title', e.target.value)}
-          className={inputClass()}
           required
         />
       </div>
 
-      <div className="space-y-1">
-        <label className="text-sm text-zinc-400">Author Name</label>
-        <input
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId('author')}>Author Name</Label>
+        <Input
+          id={fieldId('author')}
           type="text"
           placeholder="Author display name"
           value={values.authorName}
           onChange={(e) => set('authorName', e.target.value)}
-          className={inputClass()}
         />
       </div>
 
@@ -72,98 +97,96 @@ export function MetadataStep({ values, onChange, onNext, allowFirstPage = true }
         }
       />
 
-      <div className="space-y-1">
-        <label className="text-sm text-zinc-400">Description</label>
-        <textarea
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId('description')}>Description</Label>
+        <Textarea
+          id={fieldId('description')}
           placeholder="Brief description of the comic..."
           value={values.description}
           onChange={(e) => set('description', e.target.value)}
           rows={3}
-          className={inputClass('resize-none')}
+          className="resize-none"
         />
       </div>
 
-      <div className="space-y-1">
-        <label className="text-sm text-zinc-400">Tags (comma-separated)</label>
-        <input
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId('tags')}>Tags (comma-separated)</Label>
+        <Input
+          id={fieldId('tags')}
           type="text"
           placeholder="action, adventure, fantasy"
           value={values.tags}
           onChange={(e) => set('tags', e.target.value)}
-          className={inputClass()}
         />
       </div>
 
-      <div className="flex items-center gap-3">
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
-          <input
-            type="checkbox"
-            checked={values.nsfw}
-            onChange={(e) => set('nsfw', e.target.checked)}
-            className="accent-zinc-400"
-          />
-          Mark as NSFW
-          <span className="text-xs text-zinc-600">(adds a content warning)</span>
-        </label>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <Label htmlFor={fieldId('nsfw')}>Mark as NSFW</Label>
+          <p id={fieldId('nsfw-description')} className="mt-0.5 text-xs text-muted-foreground">
+            Adds a content warning
+          </p>
+        </div>
+        <Switch
+          id={fieldId('nsfw')}
+          checked={values.nsfw}
+          onCheckedChange={(checked) => set('nsfw', checked)}
+          aria-describedby={fieldId('nsfw-description')}
+        />
       </div>
 
-      <div className="space-y-1">
-        <label className="text-sm text-zinc-400">Language</label>
-        <input
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId('language')}>Language</Label>
+        <Input
+          id={fieldId('language')}
           type="text"
           placeholder="en"
           value={values.language}
           onChange={(e) => set('language', e.target.value)}
-          className={inputClass('max-w-[8rem]')}
+          className="max-w-32"
         />
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm text-zinc-400">Cover Image</label>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <label className="cursor-pointer rounded-lg border border-dashed border-zinc-700 px-4 py-3 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200">
-            {values.coverFile ? values.coverFile.name : 'Choose JPG/PNG/WebP...'}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              onChange={handleCoverFile}
-            />
-          </label>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Cover Image</legend>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <FilePicker
+            accept="image/jpeg,image/png,image/webp"
+            label="Choose cover image"
+            onFile={handleCoverFile}
+            className="flex items-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm text-muted-foreground hover:border-ring hover:text-foreground"
+          >
+            <ImagePlus aria-hidden="true" className="size-4 shrink-0" />
+            <span className="truncate">{values.coverFile ? values.coverFile.name : 'Choose JPG/PNG/WebP...'}</span>
+          </FilePicker>
           {allowFirstPage ? (
             <>
-              <span className="text-xs text-zinc-600">or</span>
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-400">
-                <input
-                  type="checkbox"
+              <span className="text-xs text-muted-foreground">or</span>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id={fieldId('first-page')}
                   checked={values.coverMode === 'first-page'}
-                  onChange={(e) =>
-                    set('coverMode', e.target.checked ? 'first-page' : 'file')
-                  }
-                  className="accent-zinc-400"
+                  onCheckedChange={(checked) => set('coverMode', checked === true ? 'first-page' : 'file')}
                 />
-                Use first page of CBZ
-              </label>
+                <Label htmlFor={fieldId('first-page')} className="font-normal text-muted-foreground">
+                  Use first page of the chapter
+                </Label>
+              </div>
             </>
           ) : null}
         </div>
-        {values.coverFile && values.coverMode === 'file' && (
+        {coverPreviewUrl && values.coverMode === 'file' && (
           <img
-            src={URL.createObjectURL(values.coverFile)}
+            src={coverPreviewUrl}
             alt="Cover preview"
             className="h-24 w-auto rounded-lg object-cover"
           />
         )}
-      </div>
+      </fieldset>
 
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={!canProceed}
-        className="w-full rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        Next: Add Chapter
-      </button>
-    </div>
+      <Button type="submit" size="lg" disabled={!canProceed} className="h-11 w-full rounded-full">
+        {allowFirstPage ? 'Next: Add Chapter' : 'Next: Upload'}
+      </Button>
+    </form>
   )
 }

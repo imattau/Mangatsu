@@ -1,9 +1,15 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useId } from 'react'
 import JSZip from 'jszip'
 import { convertPdfFileToWebpPages } from './pdf'
 import { readImageDimensions } from './webp'
 import { MAX_CHAPTER_PAGES, MAX_CHAPTER_SOURCE_BYTES } from './limits'
 import type { PageDimensions } from '@/types'
+import { FileUp } from 'lucide-react'
+import { FilePicker } from './FilePicker'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
 
 export interface ChapterFormValues {
   chapterTitle: string
@@ -50,6 +56,19 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
   const [dragging, setDragging] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [parseError, setParseError] = useState('')
+  const id = useId()
+  const previousPreviewUrl = values.firstPageObjectUrl
+
+  /** Replace the chapter, releasing the previous first-page preview URL. */
+  const commitChapter = useCallback(
+    (next: ChapterFormValues) => {
+      if (previousPreviewUrl && previousPreviewUrl !== next.firstPageObjectUrl) {
+        URL.revokeObjectURL(previousPreviewUrl)
+      }
+      onChange(next)
+    },
+    [onChange, previousPreviewUrl],
+  )
 
   const handleCbz = useCallback(
     async (file: File) => {
@@ -117,17 +136,16 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
         const pages: File[] = parsedPages.map((page) => page.file)
         const pageDimensions: PageDimensions[] = parsedPages.map((page) => page.dimensions)
 
-        const firstPageBlob = await imageEntries[0].async('blob')
-        const firstPageObjectUrl = URL.createObjectURL(firstPageBlob)
+        const firstPageObjectUrl = URL.createObjectURL(pages[0])
 
-        onChange({ chapterTitle, chapterNumber, pages, pageDimensions, firstPageObjectUrl })
+        commitChapter({ chapterTitle, chapterNumber, pages, pageDimensions, firstPageObjectUrl })
       } catch (err) {
         setParseError(`Failed to parse CBZ: ${err instanceof Error ? err.message : String(err)}`)
       } finally {
         setParsing(false)
       }
     },
-    [onChange],
+    [commitChapter],
   )
 
   const handlePdf = useCallback(
@@ -152,7 +170,7 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
           return
         }
 
-        onChange({
+        commitChapter({
           chapterTitle: fallback.title,
           chapterNumber: fallback.number,
           pages,
@@ -165,7 +183,7 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
         setParsing(false)
       }
     },
-    [onChange],
+    [commitChapter],
   )
 
   const handleFile = useCallback(
@@ -184,51 +202,48 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
     [handleCbz, handlePdf],
   )
 
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) void handleFile(file)
-  }
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault()
-    setDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file) void handleFile(file)
-  }
-
   const canProceed = editing ? values.chapterTitle.trim().length > 0 : values.pages.length > 0
 
   return (
-    <div className="space-y-5">
-      <h2 className="text-lg font-semibold text-zinc-100">Step 2 — Chapter</h2>
+    <form
+      className="space-y-5"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (canProceed) onNext()
+      }}
+    >
+      <h2 className="text-lg font-semibold">Chapter</h2>
 
       {!editing && (
-        <label
-          onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          className={`flex min-h-[12rem] cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed transition ${
-            dragging ? 'border-zinc-400 bg-zinc-800' : 'border-zinc-700 bg-zinc-900/50'
-          }`}
+        <FilePicker
+          accept=".cbz,.pdf,application/pdf"
+          label="Choose a .cbz or .pdf chapter file"
+          onFile={(file) => void handleFile(file)}
+          onDragStateChange={setDragging}
+          disabled={parsing}
+          className={cn(
+            'flex min-h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 text-center',
+            dragging ? 'border-ring bg-muted' : 'bg-card/50 hover:border-ring',
+          )}
         >
-          <p className="text-sm text-zinc-400">
-            {parsing ? 'Parsing chapter file...' : 'Drop a .cbz or .pdf file here, or click to browse'}
+          <FileUp aria-hidden="true" className="size-6 text-muted-foreground" />
+          <p aria-live="polite" className="text-sm text-muted-foreground">
+            {parsing ? 'Parsing chapter file...' : 'Drop a .cbz or .pdf file here, or tap to browse'}
           </p>
-          <input type="file" accept=".cbz,.pdf,application/pdf" className="hidden" onChange={handleFileInput} />
-        </label>
+        </FilePicker>
       )}
 
       {editing && (
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-400">
+        <div className="rounded-2xl border bg-card/50 p-4 text-sm text-muted-foreground">
           Existing pages will be reused unless you publish a replacement chapter later.
         </div>
       )}
 
-      {parseError && <p className="text-sm text-red-400">{parseError}</p>}
+      {parseError && <p role="alert" className="text-sm text-destructive">{parseError}</p>}
 
       {(values.pages.length > 0 || editing) && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-3">
-          <p className="text-sm text-zinc-400">
+        <div className="space-y-3 rounded-xl border bg-card p-4">
+          <p className="text-sm text-muted-foreground">
             {values.pages.length > 0 ? `${values.pages.length} pages found` : 'Using the existing chapter pages'}
           </p>
 
@@ -240,45 +255,39 @@ export function ChapterStep({ values, onChange, onNext, onBack, editing = false 
             />
           )}
 
-          <div className="space-y-1">
-            <label className="text-xs text-zinc-500">Chapter Number</label>
-            <input
+          <div className="space-y-1.5">
+            <Label htmlFor={`${id}-number`} className="text-xs text-muted-foreground">Chapter Number</Label>
+            <Input
+              id={`${id}-number`}
               type="number"
+              inputMode="decimal"
               min={1}
+              step="any"
               value={values.chapterNumber}
               onChange={(e) => onChange({ ...values, chapterNumber: parseFloat(e.target.value) || 1 })}
-              className="w-24 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
+              className="w-24"
             />
           </div>
-          <div className="space-y-1">
-            <label className="text-xs text-zinc-500">Chapter Title</label>
-            <input
+          <div className="space-y-1.5">
+            <Label htmlFor={`${id}-title`} className="text-xs text-muted-foreground">Chapter Title</Label>
+            <Input
+              id={`${id}-title`}
               type="text"
               value={values.chapterTitle}
               onChange={(e) => onChange({ ...values, chapterTitle: e.target.value })}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
             />
           </div>
         </div>
       )}
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-full border border-zinc-700 px-5 py-3 text-sm text-zinc-300 transition hover:border-zinc-500"
-        >
+        <Button type="button" variant="outline" size="lg" onClick={onBack} className="h-11 rounded-full px-5">
           Back
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={!canProceed}
-          className="flex-1 rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
-        >
+        </Button>
+        <Button type="submit" size="lg" disabled={!canProceed} className="h-11 flex-1 rounded-full">
           {editing ? 'Next: Publish' : 'Next: Upload'}
-        </button>
+        </Button>
       </div>
-    </div>
+    </form>
   )
 }
