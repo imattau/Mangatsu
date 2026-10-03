@@ -1,8 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useEventStore, useObservableState } from 'applesauce-react/hooks'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { of } from 'rxjs'
+import {
+  Bookmark,
+  BookmarkCheck,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  EllipsisVertical,
+  LibraryBig,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-react'
 import { useNostr } from '@/context/NostrContext'
 import { useAuthStore } from '@/stores/authStore'
 import { useLibraryStore } from '@/stores/libraryStore'
@@ -19,6 +31,27 @@ import {
 } from '@/lib/blossom'
 import { parseChapterEvent, parseComicEvent } from '@/lib/comic'
 import { ComicCommentsSection } from '@/components/ComicComments'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { cn } from '@/lib/utils'
 import {
   areTargetsCached,
   cacheTargetsForOffline,
@@ -70,6 +103,15 @@ interface ServerAvailability {
 }
 
 type OfflineState = 'checking' | 'available' | 'missing' | 'downloading' | 'removing' | 'error'
+
+type PendingDelete = { kind: 'comic' } | { kind: 'chapter'; chapter: Chapter } | null
+
+const AVAILABILITY_BADGE: Record<ServerAvailability['status'], { label: string; className: string }> = {
+  checking: { label: 'Checking', className: 'text-muted-foreground' },
+  available: { label: 'Available', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' },
+  partial: { label: 'Partial', className: 'border-amber-500/30 bg-amber-500/10 text-amber-300' },
+  missing: { label: 'Missing', className: 'border-red-500/30 bg-red-500/10 text-red-300' },
+}
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -203,10 +245,7 @@ export function ComicDetailScreen() {
   const [offlineState, setOfflineState] = useState<OfflineState>('checking')
   const [offlineProgress, setOfflineProgress] = useState({ done: 0, total: 0 })
   const [offlineError, setOfflineError] = useState('')
-  const [deletingChapterDTag, setDeletingChapterDTag] = useState('')
-  const [actionsMenuOpen, setActionsMenuOpen] = useState(false)
-  const actionsMenuRef = useRef<HTMLDivElement>(null)
-  const [activeChapterMenuDTag, setActiveChapterMenuDTag] = useState('')
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -282,53 +321,6 @@ export function ComicDetailScreen() {
     }
   }, [comic, offlineTargetsKey])
 
-  useEffect(() => {
-    function handlePointerDown(event: MouseEvent) {
-      if (!actionsMenuRef.current) return
-      if (!actionsMenuRef.current.contains(event.target as Node)) {
-        setActionsMenuOpen(false)
-      }
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setActionsMenuOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!activeChapterMenuDTag) return
-
-    function handlePointerDown(event: MouseEvent) {
-      const target = event.target as Node
-      const menu = document.querySelector(`[data-chapter-actions="${activeChapterMenuDTag}"]`)
-      if (menu && !menu.contains(target)) {
-        setActiveChapterMenuDTag('')
-      }
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setActiveChapterMenuDTag('')
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [activeChapterMenuDTag])
-
   async function handleOfflineToggle() {
     if (!comic || offlineTargets.length === 0) {
       return
@@ -397,10 +389,6 @@ export function ComicDetailScreen() {
 
   async function handleDeleteComic() {
     if (!comic || !dTag) return
-    const confirmed = window.confirm(
-      `Delete "${comic.title}"? This will publish a Nostr deletion request for the comic and its chapters.`,
-    )
-    if (!confirmed) return
 
     const nextSavedATags = comicATag ? savedATags.filter((tag) => tag !== comicATag) : savedATags
     if (saved && comicATag) {
@@ -436,13 +424,8 @@ export function ComicDetailScreen() {
   }
 
   async function handleDeleteChapter(chapter: Chapter) {
-    const confirmDelete = window.confirm(`Delete chapter "${chapter.title}"?`)
-    if (!confirmDelete) return
-
-    setDeletingChapterDTag(chapter.dTag)
     removeChapter(chapter.dTag)
     removeProgressForChapter(chapter.dTag)
-    setDeletingChapterDTag('')
 
     try {
       const deleteEvent = await service.eventFactory.build({
@@ -490,167 +473,135 @@ export function ComicDetailScreen() {
     }
   }
 
-  function closeActionsMenu() {
-    setActionsMenuOpen(false)
+  function confirmPendingDelete() {
+    const target = pendingDelete
+    setPendingDelete(null)
+    if (target?.kind === 'comic') void handleDeleteComic()
+    if (target?.kind === 'chapter') void handleDeleteChapter(target.chapter)
   }
 
-  function handleDeleteComicFromMenu() {
-    closeActionsMenu()
-    void handleDeleteComic()
-  }
-
-  function handleOfflineToggleFromMenu() {
-    closeActionsMenu()
-    void handleOfflineToggle()
-  }
-
-  function toggleChapterActionsMenu(chapterDTag: string) {
-    setActiveChapterMenuDTag((current) => (current === chapterDTag ? '' : chapterDTag))
-  }
-
-  function closeChapterActionsMenu() {
-    setActiveChapterMenuDTag('')
-  }
-
-  function handleDeleteChapterFromMenu(chapter: Chapter) {
-    closeChapterActionsMenu()
-    void handleDeleteChapter(chapter)
-  }
+  const isOwner = Boolean(comic && comic.pubkey === myPubkey)
+  const offlineBusy = offlineState === 'checking' || offlineState === 'downloading' || offlineState === 'removing'
+  const offlineLabel =
+    offlineState === 'available'
+      ? 'Remove offline'
+      : offlineState === 'downloading'
+        ? `Caching ${offlineProgress.done}/${offlineProgress.total}`
+        : offlineState === 'removing'
+          ? 'Removing…'
+          : offlineState === 'checking'
+            ? 'Checking…'
+            : 'Make offline'
+  const blossomSummary = isCheckingBlossomAssets
+    ? AVAILABILITY_BADGE.checking
+    : allBlossomAssetsReachable
+      ? AVAILABILITY_BADGE.available
+      : { ...AVAILABILITY_BADGE.partial, label: 'Incomplete' }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] text-zinc-100">
+    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-6">
         <div className="flex items-start justify-between gap-3">
-          <Link
-            to="/"
-            className="rounded-full border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-white"
-          >
-            ← Library
-          </Link>
+          <Button asChild variant="outline" size="sm" className="rounded-full">
+            <Link to="/">
+              <ChevronLeft data-icon="inline-start" />
+              Library
+            </Link>
+          </Button>
 
           {comic && (
-            <div ref={actionsMenuRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setActionsMenuOpen((value) => !value)}
-                aria-label={actionsMenuOpen ? 'Close actions menu' : 'Open actions menu'}
-                aria-expanded={actionsMenuOpen}
-                aria-haspopup="menu"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950/80 text-zinc-300 transition hover:border-zinc-600 hover:text-white"
-              >
-                <HamburgerIcon open={actionsMenuOpen} />
-              </button>
-              {actionsMenuOpen && (
-                <div
-                  role="menu"
-                  aria-label="Comic actions"
-                  className="absolute right-0 top-full z-20 mt-2 w-56 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl shadow-black/40"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-lg"
+                  className="size-10 rounded-full"
+                  aria-label="Open actions menu"
                 >
-                  {comic.pubkey === myPubkey && (
-                    <Link
-                      to={`/comic/${comic.dTag}/edit`}
-                      role="menuitem"
-                      onClick={closeActionsMenu}
-                      className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
-                    >
-                      <PencilIcon />
+                  <EllipsisVertical />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56" aria-label="Comic actions">
+                {isOwner && (
+                  <DropdownMenuItem asChild>
+                    <Link to={`/comic/${comic.dTag}/edit`}>
+                      <Pencil />
                       Edit details
                     </Link>
-                  )}
-                  {comic && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={handleOfflineToggleFromMenu}
-                      disabled={offlineState === 'checking' || offlineState === 'downloading' || offlineState === 'removing'}
-                      className="flex w-full items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <OfflineIcon />
-                      {offlineState === 'available'
-                        ? 'Remove offline'
-                        : offlineState === 'downloading'
-                          ? `Caching ${offlineProgress.done}/${offlineProgress.total}`
-                          : offlineState === 'removing'
-                            ? 'Removing…'
-                            : offlineState === 'checking'
-                              ? 'Checking…'
-                              : 'Make offline'}
-                    </button>
-                  )}
-                  {comic.pubkey === myPubkey && (
-                    <Link
-                      to={`/comic/${comic.dTag}/upload`}
-                      role="menuitem"
-                      onClick={closeActionsMenu}
-                      className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
-                    >
-                      <PlusIcon />
+                  </DropdownMenuItem>
+                )}
+                {isOwner && (
+                  <DropdownMenuItem asChild>
+                    <Link to={`/comic/${comic.dTag}/upload`}>
+                      <Plus />
                       Add chapter
                     </Link>
-                  )}
-                  {comic.pubkey === myPubkey && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={handleDeleteComicFromMenu}
-                      className="flex w-full items-center gap-2 px-4 py-3 text-sm text-red-300 transition hover:bg-red-950/40"
-                    >
-                      <TrashIcon />
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem disabled={offlineBusy} onSelect={() => void handleOfflineToggle()}>
+                  <Download />
+                  {offlineLabel}
+                </DropdownMenuItem>
+                {isOwner && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onSelect={() => setPendingDelete({ kind: 'comic' })}>
+                      <Trash2 />
                       Delete comic
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
 
         {comic ? (
           <header className="flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:gap-5">
-              <CoverImage
-                hash={comic.coverHash}
-                server={server}
-                servers={comic.coverServers}
-                torrent={comic.coverTorrent}
-                title={comic.title}
-              />
+            <CoverImage
+              hash={comic.coverHash}
+              server={server}
+              servers={comic.coverServers}
+              torrent={comic.coverTorrent}
+              title={comic.title}
+            />
             <div className="w-full min-w-0 sm:flex-1">
-              <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">
+              <p className="text-[0.65rem] uppercase tracking-[0.45em] text-muted-foreground">
                 {comic.author || 'Unknown author'}
               </p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight leading-tight">
                 {comic.title}
               </h1>
-              <p className="mt-1 text-sm text-zinc-400">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {chapters.length} chapter{chapters.length !== 1 ? 's' : ''}
               </p>
               {comic.description && (
-                <p className="mt-2 text-sm text-zinc-400 leading-relaxed">{comic.description}</p>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{comic.description}</p>
               )}
               {visibleTags.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {visibleTags.map((tag) => (
-                    <Link
-                      key={tag}
-                      to={`/feed?tag=${encodeURIComponent(tag)}`}
-                      className="rounded-full border border-zinc-800 bg-zinc-950/70 px-3 py-1 text-xs font-medium text-zinc-300 transition hover:border-zinc-600 hover:text-white"
-                    >
-                      #{tag}
-                    </Link>
+                    <Badge key={tag} asChild variant="outline" className="h-7 rounded-full px-3">
+                      <Link to={`/feed?tag=${encodeURIComponent(tag)}`}>#{tag}</Link>
+                    </Badge>
                   ))}
                 </div>
               )}
               <div className="mt-3 flex gap-2 flex-wrap">
                 {isForeign && !addedToLibrary && (
-                  <button
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
                     onClick={() => void handleAddToLibrary()}
                     disabled={adding}
                     aria-label="Add to library"
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:opacity-50 sm:px-4"
+                    className="h-10 rounded-full px-3 sm:px-4"
                   >
-                    <LibraryPlusIcon />
+                    <LibraryBig />
                     <span className="hidden sm:inline">{adding ? 'Adding…' : 'Add to Library'}</span>
-                  </button>
+                  </Button>
                 )}
                 {(() => {
                   const targetPubkey = comic.authorPubkey || comic.pubkey
@@ -659,134 +610,112 @@ export function ComicDetailScreen() {
                   ) : null
                 })()}
                 {isForeign && myPubkey && (
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="lg"
                     onClick={() => void (saved ? handleUnsave() : handleSave())}
                     aria-label={saved ? 'Unsave comic' : 'Save comic'}
-                    className="inline-flex items-center gap-2 rounded-full border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:px-4"
+                    aria-pressed={saved}
+                    className="h-10 rounded-full px-3 sm:px-4"
                   >
-                    <BookmarkIcon filled={saved} />
+                    {saved ? <BookmarkCheck /> : <Bookmark />}
                     <span className="hidden sm:inline">{saved ? 'Unsave' : 'Save'}</span>
-                  </button>
+                  </Button>
                 )}
               </div>
               {addedToLibrary && (
                 <p className="mt-3 text-sm text-emerald-400">Added to your library</p>
               )}
               {offlineError && (
-                <p className="mt-3 text-sm text-red-400">{offlineError}</p>
+                <p className="mt-3 text-sm text-destructive">{offlineError}</p>
               )}
               {!offlineError && offlineState === 'available' && (
                 <p className="mt-3 text-sm text-emerald-400">Available offline</p>
               )}
               {!offlineError && offlineState === 'missing' && offlineTargets.length > 0 && (
-                <p className="mt-3 text-sm text-zinc-500">Not cached for offline reading</p>
+                <p className="mt-3 text-sm text-muted-foreground">Not cached for offline reading</p>
               )}
             </div>
           </header>
         ) : (
-          <header>
-            <div className="h-6 w-40 rounded bg-zinc-800 animate-pulse" />
+          <header aria-busy="true" aria-label="Loading comic" className="flex flex-col items-start gap-4 sm:flex-row sm:items-end sm:gap-5">
+            <Skeleton className="aspect-[2/3] w-28 rounded-2xl sm:w-32" />
+            <div className="flex w-full flex-col gap-2 sm:flex-1">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-7 w-56" />
+              <Skeleton className="h-4 w-20" />
+            </div>
           </header>
         )}
 
         {chapters.length === 0 ? (
-          <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
-            <p className="text-lg font-medium text-zinc-100">No chapters yet</p>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
+          <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed bg-card/40 px-6 text-center">
+            <p className="text-lg font-medium">No chapters yet</p>
+            <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
               Chapters will appear here once your relays sync this comic.
             </p>
           </section>
         ) : (
           <section className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">Chapters</p>
+            <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">Chapters</p>
             <ul className="flex flex-col gap-2">
               {chapters.map((chapter) => {
                 const chapterProgress = progress[chapter.dTag]
-                const deleting = deletingChapterDTag === chapter.dTag
-                const canEditOrDelete = comic?.pubkey === myPubkey
                 return (
                   <li key={chapter.dTag}>
-                    <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 transition hover:border-zinc-600 hover:bg-zinc-900/80">
+                    <div className="flex items-center gap-2 rounded-2xl border bg-card/60 px-4 py-3 transition-colors hover:bg-muted/60">
                       <Link
                         to={`/comic/${dTag}/chapter/${encodeURIComponent(chapter.dTag)}`}
                         className="flex min-w-0 flex-1 items-center justify-between gap-3"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs text-zinc-500">{chapterLabel(chapter.dTag)}</p>
-                          <p className="mt-0.5 truncate text-sm font-medium text-zinc-100">
+                          <p className="text-xs text-muted-foreground">{chapterLabel(chapter.dTag)}</p>
+                          <p className="mt-0.5 truncate text-sm font-medium">
                             {chapter.title}
                           </p>
-                          <p className="mt-0.5 text-xs text-zinc-600">
+                          <p className="mt-0.5 text-xs text-muted-foreground/70">
                             {chapter.pageHashes.length} page{chapter.pageHashes.length !== 1 ? 's' : ''}
                           </p>
                         </div>
                         <div className="flex flex-shrink-0 items-center gap-2">
                           {chapterProgress && (
-                            <span className="rounded-full border border-indigo-500/40 bg-indigo-500/20 px-2.5 py-1 text-xs font-medium text-indigo-300">
+                            <Badge className="border-indigo-500/40 bg-indigo-500/20 text-indigo-300">
                               Continue
-                            </span>
+                            </Badge>
                           )}
-                          <svg
-                            className="h-4 w-4 text-zinc-600"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M9 5l7 7-7 7"
-                            />
-                          </svg>
+                          <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground/70" />
                         </div>
                       </Link>
-                      {canEditOrDelete && (
-                        <div className="relative flex flex-shrink-0 items-center">
-                          <button
-                            type="button"
-                            onClick={() => toggleChapterActionsMenu(chapter.dTag)}
-                            aria-label={
-                              activeChapterMenuDTag === chapter.dTag
-                                ? `Close chapter actions for ${chapter.title}`
-                                : `Open chapter actions for ${chapter.title}`
-                            }
-                            aria-expanded={activeChapterMenuDTag === chapter.dTag}
-                            aria-haspopup="menu"
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-                          >
-                            <HamburgerIcon open={activeChapterMenuDTag === chapter.dTag} />
-                          </button>
-                          {activeChapterMenuDTag === chapter.dTag && (
-                            <div
-                              role="menu"
-                              aria-label={`Chapter actions for ${chapter.title}`}
-                              data-chapter-actions={chapter.dTag}
-                              className="absolute right-0 top-full z-20 mt-2 w-48 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl shadow-black/40"
+                      {isOwner && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-lg"
+                              className="size-10 shrink-0 rounded-full"
+                              aria-label={`Open chapter actions for ${chapter.title}`}
                             >
-                              <Link
-                                to={`/comic/${dTag}/chapter/${encodeURIComponent(chapter.dTag)}/edit`}
-                                role="menuitem"
-                                onClick={closeChapterActionsMenu}
-                                className="flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 transition hover:bg-zinc-900"
-                              >
-                                <PencilIcon />
+                              <EllipsisVertical />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48" aria-label={`Chapter actions for ${chapter.title}`}>
+                            <DropdownMenuItem asChild>
+                              <Link to={`/comic/${dTag}/chapter/${encodeURIComponent(chapter.dTag)}/edit`}>
+                                <Pencil />
                                 Edit chapter
                               </Link>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                disabled={deleting}
-                                onClick={() => handleDeleteChapterFromMenu(chapter)}
-                                className="flex w-full items-center gap-2 px-4 py-3 text-sm text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <TrashIcon />
-                                {deleting ? 'Deleting…' : 'Delete chapter'}
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => setPendingDelete({ kind: 'chapter', chapter })}
+                            >
+                              <Trash2 />
+                              Delete chapter
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </div>
                   </li>
@@ -797,13 +726,13 @@ export function ComicDetailScreen() {
         )}
 
         {blossomServers.length > 0 && (
-          <details className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <details className="rounded-2xl border bg-card/70 p-4">
             <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-zinc-500">
+                <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">
                   Blossom servers
                 </p>
-                <p className="mt-2 text-sm text-zinc-400">
+                <p className="mt-2 text-sm text-muted-foreground">
                   {isCheckingBlossomAssets
                     ? 'Probing declared comic assets for reachability.'
                     : allBlossomAssetsReachable
@@ -811,54 +740,30 @@ export function ComicDetailScreen() {
                       : 'Some declared comic assets are missing or partial.'}
                 </p>
               </div>
-              <div
-                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                  isCheckingBlossomAssets
-                    ? 'border-zinc-700 bg-zinc-900/80 text-zinc-400'
-                    : allBlossomAssetsReachable
-                      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                      : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                }`}
-              >
-                {isCheckingBlossomAssets ? 'Checking' : allBlossomAssetsReachable ? 'Available' : 'Incomplete'}
-              </div>
+              <Badge variant="outline" className={cn('h-6 px-2.5', blossomSummary.className)}>
+                {blossomSummary.label}
+              </Badge>
             </summary>
             <ul className="mt-3 space-y-2">
               {blossomServers.map((entry) => {
                 const availability = blossomAvailability[entry.server]
-                const ready = availability?.status ?? 'checking'
+                const badge = AVAILABILITY_BADGE[availability?.status ?? 'checking']
                 return (
                   <li
                     key={entry.server}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-card/70 px-3 py-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-zinc-100">{entry.server}</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">
+                      <p className="truncate text-sm font-medium">{entry.server}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {availability
                           ? `${availability.ok}/${availability.total} assets reachable`
                           : `${entry.assets.length} assets queued for check`}
                       </p>
                     </div>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
-                        ready === 'available'
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                          : ready === 'partial'
-                            ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-                            : ready === 'missing'
-                              ? 'border-red-500/30 bg-red-500/10 text-red-300'
-                              : 'border-zinc-700 bg-zinc-900/80 text-zinc-400'
-                      }`}
-                    >
-                      {ready === 'available'
-                        ? 'Available'
-                        : ready === 'partial'
-                          ? 'Partial'
-                          : ready === 'missing'
-                            ? 'Missing'
-                            : 'Checking'}
-                    </span>
+                    <Badge variant="outline" className={cn('h-6 px-2.5', badge.className)}>
+                      {badge.label}
+                    </Badge>
                   </li>
                 )
               })}
@@ -870,6 +775,29 @@ export function ComicDetailScreen() {
           <ComicCommentsSection comic={comic} comicEvent={comicEvent} />
         )}
       </div>
+
+      <AlertDialog open={pendingDelete !== null} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingDelete?.kind === 'chapter'
+                ? `Delete "${pendingDelete.chapter.title}"?`
+                : `Delete "${comic?.title ?? 'this comic'}"?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete?.kind === 'chapter'
+                ? 'This publishes a Nostr deletion request for this chapter.'
+                : 'This publishes a Nostr deletion request for the comic and all of its chapters.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={confirmPendingDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -892,7 +820,7 @@ function CoverImage({
   title: string
 }) {
   const className =
-    'aspect-[2/3] w-28 flex-shrink-0 rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20 sm:w-32'
+    'aspect-[2/3] w-28 flex-shrink-0 rounded-2xl object-cover bg-muted shadow-lg shadow-black/20 sm:w-32'
   if (!hash) return <div className={className} />
   return (
     <BlossomImage
@@ -904,161 +832,5 @@ function CoverImage({
       loading="lazy"
       className={className}
     />
-  )
-}
-
-function TrashIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M3 6h18" />
-      <path d="M8 6V4h8v2" />
-      <path d="M6 6l1 14h10l1-14" />
-      <path d="M10 11v5" />
-      <path d="M14 11v5" />
-    </svg>
-  )
-}
-
-function PencilIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  )
-}
-
-function OfflineIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M12 3v10" />
-      <path d="M8 9l4 4 4-4" />
-      <path d="M5 19h14" />
-    </svg>
-  )
-}
-
-function PlusIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  )
-}
-
-function LibraryPlusIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M4 6h10" />
-      <path d="M4 10h10" />
-      <path d="M4 14h6" />
-      <path d="M16 12v6" />
-      <path d="M13 15h6" />
-    </svg>
-  )
-}
-
-function HamburgerIcon({ open }: { open: boolean }) {
-  return open ? (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M6 6l12 12" />
-      <path d="M18 6L6 18" />
-    </svg>
-  ) : (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M4 7h16" />
-      <path d="M4 12h16" />
-      <path d="M4 17h16" />
-    </svg>
-  )
-}
-
-function BookmarkIcon({ filled }: { filled: boolean }) {
-  return filled ? (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M6 3.75A2.75 2.75 0 0 1 8.75 1h6.5A2.75 2.75 0 0 1 18 3.75V21a.75.75 0 0 1-1.2.6L12 17.25 7.2 21.6A.75.75 0 0 1 6 21V3.75Z" />
-    </svg>
-  ) : (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4 shrink-0"
-      aria-hidden="true"
-    >
-      <path d="M6 4.5A2.5 2.5 0 0 1 8.5 2h7A2.5 2.5 0 0 1 18 4.5V21l-6-4-6 4V4.5Z" />
-    </svg>
   )
 }
