@@ -128,7 +128,7 @@ export function ComicDetailScreen() {
 
   const myPubkey = useAuthStore((s) => s.pubkey)
   const secretKey = useAuthStore((s) => s.secretKey)
-  const savedATags = useLibraryStore((s) => s.savedATags)
+  const setLibrary = useLibraryStore((s) => s.setAll)
   const addToLibrary = useLibraryStore((s) => s.add)
   const removeFromLibrary = useLibraryStore((s) => s.remove)
   const isInLibrary = useLibraryStore((s) => s.isIn)
@@ -147,6 +147,7 @@ export function ComicDetailScreen() {
 
   const [addedToLibrary, setAddedToLibrary] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [libraryError, setLibraryError] = useState('')
 
   // Comic from store (own or previously cached)
   const storedComic: Comic | undefined = dTag ? comics[dTag] : undefined
@@ -361,36 +362,24 @@ export function ComicDetailScreen() {
   const comicATag = comic ? `30040:${comic.pubkey}:${comic.dTag}` : ''
   const saved = comicATag ? isInLibrary(comicATag) : false
 
-  async function handleSave() {
+  async function updateLibraryEntry(saving: boolean) {
     if (!comic || !myPubkey || !comicATag) return
-    addToLibrary(comicATag)
+    setLibraryError('')
+    if (saving) addToLibrary(comicATag)
+    else removeFromLibrary(comicATag)
     try {
-      await service.publishLibraryList(
-        [...savedATags, comicATag],
-        { secretKey: secretKey ?? undefined, pubkey: myPubkey },
-      )
-    } catch {
-      // fire-and-forget
-    }
-  }
-
-  async function handleUnsave() {
-    if (!comic || !myPubkey || !comicATag) return
-    removeFromLibrary(comicATag)
-    try {
-      await service.publishLibraryList(
-        savedATags.filter((t) => t !== comicATag),
-        { secretKey: secretKey ?? undefined, pubkey: myPubkey },
-      )
-    } catch {
-      // fire-and-forget
+      setLibrary(await service.setLibraryEntry(comicATag, saving, { secretKey: secretKey ?? undefined }))
+    } catch (err) {
+      // Undo the optimistic change so the button reflects the list on relays.
+      if (saving) removeFromLibrary(comicATag)
+      else addToLibrary(comicATag)
+      setLibraryError(err instanceof Error ? err.message : String(err))
     }
   }
 
   async function handleDeleteComic() {
     if (!comic || !dTag) return
 
-    const nextSavedATags = comicATag ? savedATags.filter((tag) => tag !== comicATag) : savedATags
     if (saved && comicATag) {
       removeFromLibrary(comicATag)
     }
@@ -401,14 +390,16 @@ export function ComicDetailScreen() {
     removeProgressForComic(comic.dTag)
     navigate('/')
 
-    try {
-      if (saved && myPubkey) {
-        await service.publishLibraryList(
-          nextSavedATags,
-          { secretKey: secretKey ?? undefined, pubkey: myPubkey },
-        )
-      }
+    if (saved && myPubkey && comicATag) {
+      service
+        .setLibraryEntry(comicATag, false, { secretKey: secretKey ?? undefined })
+        .then(setLibrary)
+        .catch(() => {
+          // Local removal is done; the entry stays in the list on relays until the next edit succeeds.
+        })
+    }
 
+    try {
       const template = {
         kind: 5 as const,
         content: `Deleted from Mangatsu: ${comic.title}`,
@@ -614,7 +605,7 @@ export function ComicDetailScreen() {
                     type="button"
                     variant="outline"
                     size="lg"
-                    onClick={() => void (saved ? handleUnsave() : handleSave())}
+                    onClick={() => void updateLibraryEntry(!saved)}
                     aria-label={saved ? 'Unsave comic' : 'Save comic'}
                     aria-pressed={saved}
                     className="h-10 rounded-full px-3 sm:px-4"
@@ -626,6 +617,9 @@ export function ComicDetailScreen() {
               </div>
               {addedToLibrary && (
                 <p className="mt-3 text-sm text-emerald-400">Added to your library</p>
+              )}
+              {libraryError && (
+                <p role="alert" className="mt-3 text-sm text-destructive">{libraryError}</p>
               )}
               {offlineError && (
                 <p className="mt-3 text-sm text-destructive">{offlineError}</p>

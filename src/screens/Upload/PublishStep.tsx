@@ -60,7 +60,7 @@ export function PublishStep({
   const setChapter = useComicStore((state) => state.forceSetChapter)
   const removeChapter = useComicStore((state) => state.removeChapter)
   const removeProgressForChapter = useReadStore((state) => state.removeProgressForChapter)
-  const savedATags = useLibraryStore((state) => state.savedATags)
+  const setLibrary = useLibraryStore((state) => state.setAll)
   const addToLibrary = useLibraryStore((state) => state.add)
   const queueDraft = usePublishQueueStore((state) => state.queueDraft)
   const [status, setStatus] = useState<'review' | 'publishing' | 'done' | 'error'>('review')
@@ -147,10 +147,7 @@ export function PublishStep({
         const comicATag = `30040:${pubkey}:${draft.comicDTag}`
         addToLibrary(comicATag)
         try {
-          await service.publishLibraryList(
-            [...savedATags, comicATag],
-            { secretKey: secretKey ?? undefined, pubkey },
-          )
+          setLibrary(await service.setLibraryEntry(comicATag, true, { secretKey: secretKey ?? undefined }))
         } catch {
           // Keep local saved state even if the library publish fails.
         }

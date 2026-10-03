@@ -89,7 +89,7 @@ let mockChapters: Chapter[] = [mockChapter1, mockChapter2]
 let mockProgress: Record<string, ReadingProgress> = {}
 const mockEventFactoryBuild = vi.fn(async (template: object) => ({ ...template, id: 'delete-event', sig: 'sig', pubkey: 'abc' }))
 const mockPublishEvent = vi.fn(async () => undefined)
-const mockPublishLibraryList = vi.fn(async () => undefined)
+const mockSetLibraryEntry = vi.fn(async (): Promise<string[]> => [])
 const mockChaptersForComic = vi.fn(() => mockChapters)
 const mockSetComic = vi.fn()
 const mockRemoveChapter = vi.fn()
@@ -136,7 +136,7 @@ vi.mock('../context/NostrContext', () => ({
       subscribeToChapters: vi.fn(() => ({ unsubscribe: vi.fn() })),
       subscribeToComicComments: vi.fn(() => ({ unsubscribe: vi.fn() })),
       publishEvent: mockPublishEvent,
-      publishLibraryList: mockPublishLibraryList,
+      setLibraryEntry: mockSetLibraryEntry,
     },
   }),
 }))
@@ -172,9 +172,11 @@ vi.mock('../stores/libraryStore', () => ({
     add: (aTag: string) => void
     remove: (aTag: string) => void
     isIn: (aTag: string) => boolean
+    setAll: (aTags: string[]) => void
   }) => unknown) =>
     sel({
       savedATags: mockSavedATags,
+      setAll: vi.fn(),
       add: vi.fn(),
       remove: mockRemoveFromLibrary,
       isIn: (aTag: string) => mockSavedATags.includes(aTag),
@@ -223,7 +225,7 @@ describe('ComicDetailScreen', () => {
   beforeEach(() => {
     mockEventFactoryBuild.mockClear()
     mockPublishEvent.mockClear()
-    mockPublishLibraryList.mockClear()
+    mockSetLibraryEntry.mockClear()
     mockChaptersForComic.mockClear()
     mockSetComic.mockClear()
     mockRemoveChapter.mockClear()
@@ -373,10 +375,7 @@ describe('ComicDetailScreen', () => {
         expect.objectContaining({ kind: 5, pubkey: 'abc' }),
       )
       expect(mockRemoveFromLibrary).toHaveBeenCalledWith('30040:abc:one-piece')
-      expect(mockPublishLibraryList).toHaveBeenCalledWith(
-        [],
-        expect.objectContaining({ pubkey: 'abc' }),
-      )
+      expect(mockSetLibraryEntry).toHaveBeenCalledWith('30040:abc:one-piece', false, expect.any(Object))
     })
   })
 

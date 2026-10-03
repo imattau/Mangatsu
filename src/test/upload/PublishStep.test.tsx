@@ -5,7 +5,8 @@ import { PublishStep } from '../../screens/Upload/PublishStep'
 
 const mockBuildPublishDraft = vi.fn()
 const mockPublishDraft = vi.fn()
-const mockPublishLibraryList = vi.fn(async () => undefined)
+const mockSetLibraryEntry = vi.fn(async () => ['30040:abc:existing-comic', '30040:abc:new-comic'])
+const mockSetLibrary = vi.fn()
 const mockAddToLibrary = vi.fn()
 
 vi.mock('../../screens/Upload/publishDraft', () => ({
@@ -16,7 +17,7 @@ vi.mock('../../screens/Upload/publishDraft', () => ({
 vi.mock('../../context/NostrContext', () => ({
   useNostr: () => ({
     service: {
-      publishLibraryList: mockPublishLibraryList,
+      setLibraryEntry: mockSetLibraryEntry,
     },
   }),
 }))
@@ -28,10 +29,10 @@ vi.mock('../../stores/authStore', () => ({
 
 vi.mock('../../stores/libraryStore', () => ({
   useLibraryStore: (sel: (s: {
-    savedATags: string[]
+    setAll: (aTags: string[]) => void
     add: (aTag: string) => void
   }) => unknown) =>
-    sel({ savedATags: ['30040:abc:existing-comic'], add: mockAddToLibrary }),
+    sel({ setAll: mockSetLibrary, add: mockAddToLibrary }),
 }))
 
 vi.mock('../../stores/publishQueueStore', () => ({
@@ -43,7 +44,8 @@ describe('PublishStep', () => {
   beforeEach(() => {
     mockBuildPublishDraft.mockReset()
     mockPublishDraft.mockReset()
-    mockPublishLibraryList.mockClear()
+    mockSetLibraryEntry.mockClear()
+    mockSetLibrary.mockClear()
     mockAddToLibrary.mockClear()
 
     mockBuildPublishDraft.mockResolvedValue({
@@ -92,10 +94,8 @@ describe('PublishStep', () => {
 
       await waitFor(() => {
         expect(mockAddToLibrary).toHaveBeenCalledWith('30040:abc:new-comic')
-        expect(mockPublishLibraryList).toHaveBeenCalledWith(
-          ['30040:abc:existing-comic', '30040:abc:new-comic'],
-          expect.objectContaining({ pubkey: 'abc' }),
-        )
+        expect(mockSetLibraryEntry).toHaveBeenCalledWith('30040:abc:new-comic', true, expect.any(Object))
+        expect(mockSetLibrary).toHaveBeenCalledWith(['30040:abc:existing-comic', '30040:abc:new-comic'])
         expect(onDone).toHaveBeenCalledWith('new-comic')
       })
   })
@@ -132,7 +132,7 @@ describe('PublishStep', () => {
 
     await waitFor(() => {
       expect(mockAddToLibrary).not.toHaveBeenCalled()
-      expect(mockPublishLibraryList).not.toHaveBeenCalled()
+      expect(mockSetLibraryEntry).not.toHaveBeenCalled()
       expect(onDone).toHaveBeenCalledWith('new-comic')
     })
   })

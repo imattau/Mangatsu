@@ -10,8 +10,15 @@ import { useRelayStore, DEFAULT_RELAYS } from '@/stores/relayStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { parseComicEvent } from '@/lib/comic'
 import { ComicIndex } from '@/services/ComicIndex'
+import type { Nip44Signer } from '@/lib/nip51'
 
 const LIST_FETCH_TIMEOUT_MS = 8000
+const LIBRARY_D_TAG = 'mangatsu-library'
+
+interface Nip44Methods {
+  encrypt: (pubkey: string, plaintext: string) => Promise<string>
+  decrypt: (pubkey: string, ciphertext: string) => Promise<string>
+}
 
 function normalizeServerUrl(url: string) {
   return url.trim().replace(/\/+$/, '').toLowerCase()
@@ -282,7 +289,7 @@ export class NostrService {
   ): { unsubscribe: () => void } {
     const source$ = this.relayPool.subscription(
       this.getRelays(),
-      [{ kinds: [30003], authors: [pubkey], '#d': ['mangatsu-library'] }],
+      [{ kinds: [30003], authors: [pubkey], '#d': [LIBRARY_D_TAG] }],
       { eventStore: this.eventStore },
     )
     const sub = source$.subscribe({
@@ -294,27 +301,75 @@ export class NostrService {
     return { unsubscribe: () => sub.unsubscribe() }
   }
 
-  async publishLibraryList(
-    aTags: string[],
-    opts: { secretKey?: Uint8Array; pubkey: string },
-  ): Promise<void> {
-    const { encodeLibraryList, encryptToSelf } = await import('@/lib/nip51')
-    const plaintext = encodeLibraryList(aTags)
+  /**
+   * Save or unsave one comic (`30040:<pubkey>:<d>` address) in the user's encrypted library
+   * list (kind 30003, `d` = mangatsu-library), returning the resulting saved addresses.
+   * Like setFollow, this decrypts and edits the newest list from relays rather than
+   * publishing local state, and keeps every entry and tag it doesn't understand. If the
+   * existing list can't be decrypted or parsed it refuses rather than replacing it.
+   */
+  setLibraryEntry(
+    aTag: string,
+    saved: boolean,
+    opts: { secretKey?: Uint8Array } = {},
+  ): Promise<string[]> {
+    return this.enqueueListUpdate(() => this.applyLibraryEntry(aTag, saved, opts.secretKey))
+  }
+
+  private async applyLibraryEntry(
+    aTag: string,
+    saved: boolean,
+    secretKey: Uint8Array | undefined,
+  ): Promise<string[]> {
+    const account = this.accountManager.active
+    if (!account) throw new Error('Sign in to change your library')
+
+    const { encryptToSelf, decryptFromSelf, libraryEntryATag, parseLibraryEntries } = await import('@/lib/nip51')
+    const signerNip44 = (account.signer as { nip44?: Nip44Methods }).nip44
     const windowNostr = typeof window !== 'undefined'
-      ? (window as unknown as { nostr?: import('@/lib/nip51').Nip44Signer }).nostr
+      ? (window as unknown as { nostr?: Nip44Signer }).nostr
       : undefined
-    const content = await encryptToSelf(plaintext, {
-      windowNostr,
-      secretKey: opts.secretKey,
-      pubkey: opts.pubkey,
-    })
-    const template = {
-      kind: 30003 as const,
-      content,
-      tags: [['d', 'mangatsu-library']],
+    const cryptoOpts = { windowNostr, secretKey, pubkey: account.pubkey }
+
+    const base = await this.loadLatestReplaceable(30003, account.pubkey, 'library', LIBRARY_D_TAG)
+    let entries: unknown[] = []
+    if (base?.content) {
+      let plaintext: string
+      try {
+        plaintext = signerNip44
+          ? await signerNip44.decrypt(account.pubkey, base.content)
+          : await decryptFromSelf(base.content, cryptoOpts)
+      } catch {
+        throw new Error('Could not decrypt your library list, so it was left unchanged.')
+      }
+      entries = parseLibraryEntries(plaintext)
     }
-    const signed = await this.eventFactory.build(template)
-    if (signed) await this.publishEvent(signed as NostrEvent)
+
+    const matches = (entry: unknown) => libraryEntryATag(entry) === aTag
+    const exists = entries.some(matches)
+    let nextEntries = entries
+    if (saved && !exists) {
+      nextEntries = [...entries, aTag]
+    } else if (!saved && exists) {
+      nextEntries = entries.filter((entry) => !matches(entry))
+    }
+
+    if (nextEntries !== entries) {
+      const plaintext = JSON.stringify(nextEntries)
+      const content = signerNip44
+        ? await signerNip44.encrypt(account.pubkey, plaintext)
+        : await encryptToSelf(plaintext, cryptoOpts)
+      const baseTags = base?.tags ?? []
+      const signed = await account.signer.signEvent({
+        kind: 30003,
+        tags: baseTags.some((tag) => tag[0] === 'd') ? baseTags : [['d', LIBRARY_D_TAG], ...baseTags],
+        content,
+        created_at: Math.max(Math.floor(Date.now() / 1000), (base?.created_at ?? 0) + 1),
+      })
+      await this.publishEvent(signed)
+    }
+
+    return nextEntries.map(libraryEntryATag).filter((tag): tag is string => Boolean(tag))
   }
 
   /**
@@ -412,13 +467,18 @@ export class NostrService {
     kind: number,
     pubkey: string,
     label: string,
+    identifier?: string,
   ): Promise<NostrEvent | undefined> {
-    const cached = this.eventStore.getReplaceable(kind, pubkey)
+    const cached = this.eventStore.getReplaceable(kind, pubkey, identifier)
     let timedOut = false
     let failed = false
     const fetched = await lastValueFrom(
       this.relayPool
-        .request(this.getRelays(), [{ kinds: [kind], authors: [pubkey], limit: 1 }])
+        .request(this.getRelays(), [
+          identifier === undefined
+            ? { kinds: [kind], authors: [pubkey], limit: 1 }
+            : { kinds: [kind], authors: [pubkey], '#d': [identifier], limit: 1 },
+        ])
         .pipe(
           takeUntil(
             timer(LIST_FETCH_TIMEOUT_MS).pipe(

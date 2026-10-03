@@ -69,8 +69,9 @@ Kinds 3, 10063 and 30003 are replaceable: publishing replaces the user's list in
 
 - `setFollow(pubkey, follow)` – kind 3
 - `setBlossomServer(url, present)` – kind 10063
+- `setLibraryEntry(aTag, saved)` – kind 30003 library. Decrypts the existing list (account signer's `nip44`, else `window.nostr` / nsec), keeps entries it doesn't recognise (both plain `30040:…` strings and `['a', …]` tags count as saved comics), and refuses if the list can't be decrypted or parsed.
 
-`publishLibraryList` (kind 30003) still publishes from local state and has this bug; fix it the same way rather than copying its pattern. Tests for the safe helpers: `src/test/NostrServiceContacts.test.ts`.
+Each returns the resulting list; write it back to the store (`setAll`, `setServers`) rather than assuming the optimistic local edit. Tests: `src/test/NostrServiceContacts.test.ts`, `src/test/NostrServiceLibrary.test.ts`.
 
 ### Offline reading
 
