@@ -93,4 +93,41 @@ describe('BoostButton', () => {
       }),
     )
   })
+
+  function renderBoost() {
+    return render(
+      <BoostButton
+        comic={comic}
+        comicUrl="https://mangatsu.example/comic/one-piece"
+        appOrigin="https://mangatsu.example"
+        blossomServers={['https://blossom.example']}
+      />,
+    )
+  }
+
+  it('shows a success state after publishing', async () => {
+    const user = userEvent.setup()
+    renderBoost()
+
+    await user.click(screen.getByRole('button', { name: /boost comic/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /boost comic/i })).toHaveTextContent('Boosted')
+    })
+  })
+
+  it('switches to the destructive variant and exposes the error when publishing fails', async () => {
+    mockPublishEvent.mockRejectedValueOnce(new Error('Relay rejected event'))
+    const user = userEvent.setup()
+    renderBoost()
+
+    await user.click(screen.getByRole('button', { name: /boost comic/i }))
+
+    const button = screen.getByRole('button', { name: /boost comic/i })
+    await waitFor(() => {
+      expect(button).toHaveAttribute('data-variant', 'destructive')
+    })
+    expect(button).toHaveAttribute('title', 'Relay rejected event')
+    expect(button).toHaveTextContent('Retry boost')
+  })
 })

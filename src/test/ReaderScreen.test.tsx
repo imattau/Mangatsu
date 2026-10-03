@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { render, screen, act, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React, { forwardRef } from 'react'
 import type { Ref } from 'react'
@@ -508,7 +508,7 @@ describe('ReaderScreen — page rendering', () => {
     const user = userEvent.setup()
     const { container } = renderReader()
 
-    await user.click(screen.getByRole('button', { name: /fullscreen/i }))
+    await user.click(screen.getByRole('button', { name: /^fullscreen$/i }))
 
     expect(container.querySelector('header')).toBeNull()
     expect(container.querySelector('nav')).toBeNull()
@@ -522,7 +522,7 @@ describe('ReaderScreen — page rendering', () => {
     expect(container.querySelector('header')).toBeNull()
     expect(container.querySelector('nav')).toBeNull()
     expect(screen.getByRole('button', { name: /exit/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /fullscreen/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^fullscreen$/i })).not.toBeInTheDocument()
   })
 
   it('defaults to fullscreen on small screens', async () => {
@@ -538,7 +538,7 @@ describe('ReaderScreen — page rendering', () => {
     await user.click(screen.getByRole('button', { name: /exit/i }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /fullscreen/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^fullscreen$/i })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /exit/i })).not.toBeInTheDocument()
     })
   })
@@ -579,6 +579,58 @@ describe('ReaderScreen — chapter navigation', () => {
     renderReader('one-piece', encodeURIComponent('one-piece/chapter-2'))
     expect(screen.getByRole('link', { name: /prev/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /next/i })).toBeInTheDocument()
+  })
+})
+
+describe('ReaderScreen — chapter list drawer', () => {
+  beforeEach(() => {
+    mockChapters = [mockChapter1, mockChapter2]
+    stubMatchMedia(false) // vaul queries matchMedia, which jsdom lacks
+  })
+
+  afterEach(() => {
+    delete mockProgress['one-piece/chapter-2']
+  })
+
+  it('lists chapters with the current one marked and read ones checked', async () => {
+    mockProgress['one-piece/chapter-2'] = {
+      id: 'one-piece/chapter-2',
+      chapterDTag: 'one-piece/chapter-2',
+      page: mockChapter2.pageHashes.length,
+      updatedAt: 0,
+    }
+    const user = userEvent.setup()
+    renderReader()
+
+    await user.click(screen.getByRole('button', { name: /chapters/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /chapters/i })
+    const links = within(dialog).getAllByRole('link')
+    expect(links).toHaveLength(2)
+    expect(links[0]).toHaveAttribute('aria-current', 'page')
+    expect(links[0]).toHaveTextContent('Reading now')
+    expect(links[1]).not.toHaveAttribute('aria-current')
+    expect(within(links[1]).getByLabelText('Read')).toBeInTheDocument()
+  })
+
+  it('navigates to the chosen chapter, keeping fullscreen mode', async () => {
+    const user = userEvent.setup()
+    renderReader('one-piece', encodeURIComponent('one-piece/chapter-1'), '?view=full')
+
+    await user.click(screen.getByRole('button', { name: /chapters/i }))
+    const dialog = await screen.findByRole('dialog', { name: /chapters/i })
+    const target = within(dialog).getByRole('link', { name: new RegExp(mockChapter2.title) })
+    expect(target).toHaveAttribute(
+      'href',
+      `/comic/one-piece/chapter/${encodeURIComponent('one-piece/chapter-2')}?view=full`,
+    )
+
+    await user.click(target)
+
+    await waitFor(() => {
+      expect(screen.getAllByText(mockChapter2.title).length).toBeGreaterThan(0)
+      expect(screen.getByRole('button', { name: /exit/i })).toBeInTheDocument()
+    })
   })
 })
 

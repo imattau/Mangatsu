@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
+import { Check, Loader2, Repeat2 } from 'lucide-react'
 import type { Comic } from '@/types'
 import { useNostr } from '@/context/NostrContext'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   buildComicBoostContent,
   buildComicBoostTags,
@@ -91,28 +94,21 @@ export function BoostButton({ comic, comicUrl, appOrigin, blossomServers }: Boos
 
   const disabled = !hasSigner || !comic.coverHash || status === 'loading'
 
+  const Icon = status === 'loading' ? Loader2 : status === 'success' ? Check : Repeat2
+
   return (
-    <button
+    <Button
       type="button"
+      variant={status === 'error' ? 'destructive' : 'outline'}
+      size="lg"
       onClick={() => void handleBoost()}
       disabled={disabled}
       aria-label="Boost comic"
       title={errorMsg || 'Publish a Nostr note for this comic'}
-      className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
+      className="h-10 rounded-xl px-3 sm:px-4"
     >
-      <BoostIcon />
+      <Icon className={cn(status === 'loading' && 'animate-spin')} />
       <span className="hidden sm:inline">{buttonLabel}</span>
-      <span className="sm:hidden">{buttonLabel === 'Boosting…' ? '…' : ''}</span>
-    </button>
-  )
-}
-
-function BoostIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-[1.8]">
-      <path d="M7 17L17 7" />
-      <path d="M10 7h7v7" />
-      <path d="M5 19h14" />
-    </svg>
+    </Button>
   )
 }

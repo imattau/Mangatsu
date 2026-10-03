@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -346,14 +346,16 @@ describe('ComicDetailScreen', () => {
     setMockChapters([mockChapter1, mockChapter2])
     mockProgress = {}
     const user = userEvent.setup()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
 
-    try {
-      render(<ComicDetailScreen />, { wrapper: Wrapper })
+    await user.click(screen.getByRole('button', { name: /open actions menu/i }))
+    await user.click(screen.getByRole('menuitem', { name: /delete comic/i }))
 
-      await user.click(screen.getByRole('button', { name: /open actions menu/i }))
-      await user.click(screen.getByRole('menuitem', { name: /delete comic/i }))
+    const dialog = await screen.findByRole('alertdialog', { name: /delete "one piece"/i })
+    expect(mockEventFactoryBuild).not.toHaveBeenCalled()
+    await user.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
+    await waitFor(() => {
       expect(mockEventFactoryBuild).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: 5,
@@ -375,9 +377,23 @@ describe('ComicDetailScreen', () => {
         [],
         expect.objectContaining({ pubkey: 'abc' }),
       )
-    } finally {
-      confirmSpy.mockRestore()
-    }
+    })
+  })
+
+  it('does nothing when the delete confirmation is cancelled', async () => {
+    setMockChapters([mockChapter1, mockChapter2])
+    mockProgress = {}
+    const user = userEvent.setup()
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
+
+    await user.click(screen.getByRole('button', { name: /open actions menu/i }))
+    await user.click(screen.getByRole('menuitem', { name: /delete comic/i }))
+    const dialog = await screen.findByRole('alertdialog')
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }))
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(mockEventFactoryBuild).not.toHaveBeenCalled()
+    expect(mockRemoveFromLibrary).not.toHaveBeenCalled()
   })
 
   it('hydrates the shared comic store when detail resolves a comic', () => {
@@ -445,14 +461,15 @@ describe('ComicDetailScreen', () => {
       },
     }
     const user = userEvent.setup()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<ComicDetailScreen />, { wrapper: Wrapper })
 
-    try {
-      render(<ComicDetailScreen />, { wrapper: Wrapper })
+    await user.click(screen.getByRole('button', { name: /open chapter actions for romance dawn/i }))
+    await user.click(screen.getByRole('menuitem', { name: /delete chapter/i }))
 
-      await user.click(screen.getByRole('button', { name: /open chapter actions for romance dawn/i }))
-      await user.click(screen.getByRole('menuitem', { name: /delete chapter/i }))
+    const dialog = await screen.findByRole('alertdialog', { name: /delete "romance dawn"/i })
+    await user.click(within(dialog).getByRole('button', { name: /^delete$/i }))
 
+    await waitFor(() => {
       expect(mockEventFactoryBuild).toHaveBeenCalledWith(
         expect.objectContaining({
           kind: 5,
@@ -467,9 +484,7 @@ describe('ComicDetailScreen', () => {
       )
       expect(mockRemoveChapter).toHaveBeenCalledWith('one-piece/chapter-1')
       expect(mockRemoveProgressForChapter).toHaveBeenCalledWith('one-piece/chapter-1')
-    } finally {
-      confirmSpy.mockRestore()
-    }
+    })
   })
 
   it('can cache a comic for offline reading', async () => {
