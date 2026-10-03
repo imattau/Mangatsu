@@ -1,7 +1,8 @@
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach, type MockedFunction } from 'vitest'
 import { NostrProvider, useNostr } from '../context/NostrContext'
 import type { AuthMethod } from '../stores/authStore'
+import { useReadStore } from '../stores/readStore'
 
 const mocks = vi.hoisted(() => {
   const mockSetAuth = vi.fn()
@@ -76,6 +77,12 @@ const mockService = {
   subscribeToUserLists: vi.fn(() => ({ unsubscribe: vi.fn() })),
   subscribeToLibraryList: vi.fn(() => ({ unsubscribe: vi.fn() })) as MockedFunction<
     (pubkey: string, onEvent: (event: { content: string }) => Promise<void> | void) => { unsubscribe: () => void }
+  >,
+  subscribeToReadingProgress: vi.fn(() => ({ unsubscribe: vi.fn() })) as MockedFunction<
+    (
+      pubkey: string,
+      onEvent: (event: { id: string; pubkey: string; kind: number; created_at: number; tags: string[][]; content: string; sig: string }) => void,
+    ) => { unsubscribe: () => void }
   >,
   subscribeToForeignComic: vi.fn(() => ({ unsubscribe: vi.fn() })) as MockedFunction<
     (
@@ -165,6 +172,7 @@ vi.mock('../services/NostrService', () => ({
     subscribeToUserComics = mockService.subscribeToUserComics
     subscribeToUserLists = mockService.subscribeToUserLists
     subscribeToLibraryList = mockService.subscribeToLibraryList
+    subscribeToReadingProgress = mockService.subscribeToReadingProgress
     subscribeToForeignComic = mockService.subscribeToForeignComic
   },
 }))
@@ -201,6 +209,7 @@ describe('NostrProvider auth restore', () => {
     mockService.subscribeToUserComics.mockClear()
     mockService.subscribeToUserLists.mockClear()
     mockService.subscribeToLibraryList.mockClear()
+    mockService.subscribeToReadingProgress.mockClear()
     mockService.subscribeToForeignComic.mockClear()
     mockSetComic.mockClear()
     mockDecryptFromSelf.mockReset().mockResolvedValue('[]')
@@ -251,6 +260,56 @@ describe('NostrProvider auth restore', () => {
       expect(mockClearAuth).not.toHaveBeenCalled()
       expect(mockService.accountManager.clearActive).not.toHaveBeenCalled()
     })
+  })
+
+  it('applies reading progress from other devices unless local progress is newer', async () => {
+    let onProgress: Parameters<typeof mockService.subscribeToReadingProgress>[1] | undefined
+    mockService.subscribeToReadingProgress.mockImplementation((_pubkey, onEvent) => {
+      onProgress = onEvent
+      return { unsubscribe: vi.fn() }
+    })
+    mocks.state.method = 'bunker'
+    mocks.state.account = mockAccountData
+    mockService.accountManager.active = { pubkey: 'pubkey' }
+    useReadStore.setState({
+      progress: {
+        'comic/chapter-2': { id: 'comic/chapter-2', chapterDTag: 'comic/chapter-2', page: 9, updatedAt: 500_000 },
+      },
+    })
+    const progressEvent = (dTag: string, page: string, createdAt: number) => ({
+      id: `${dTag}-${createdAt}`,
+      pubkey: 'pubkey',
+      kind: 30301,
+      created_at: createdAt,
+      tags: [
+        ['d', dTag],
+        ['page', page],
+      ],
+      content: '',
+      sig: '',
+    })
+
+    renderProvider()
+    await waitFor(() => {
+      expect(mockService.subscribeToReadingProgress).toHaveBeenCalledWith('pubkey', expect.any(Function))
+    })
+
+    act(() => {
+      onProgress?.(progressEvent('comic/chapter-1', '4', 100)) // new chapter: applied
+      onProgress?.(progressEvent('comic/chapter-2', '3', 400)) // older than local: ignored
+      onProgress?.(progressEvent('comic/chapter-3', 'zero', 900)) // malformed: ignored
+    })
+
+    expect(useReadStore.getState().progress).toEqual({
+      'comic/chapter-1': { id: 'comic/chapter-1', chapterDTag: 'comic/chapter-1', page: 4, updatedAt: 100_000 },
+      'comic/chapter-2': { id: 'comic/chapter-2', chapterDTag: 'comic/chapter-2', page: 9, updatedAt: 500_000 },
+    })
+
+    act(() => {
+      onProgress?.(progressEvent('comic/chapter-2', '12', 600)) // newer than local: applied
+    })
+    expect(useReadStore.getState().progress['comic/chapter-2']?.page).toBe(12)
+    useReadStore.setState({ progress: {} })
   })
 
   it('hydrates uncached saved comics from the library list', async () => {

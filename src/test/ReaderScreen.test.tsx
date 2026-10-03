@@ -667,6 +667,33 @@ describe('ReaderScreen — progress tracking', () => {
     expect(screen.getByText('3 / 3')).toBeInTheDocument()
   })
 
+  it('keeps the open chapter on its current page when synced progress arrives', () => {
+    const { rerender } = renderReader()
+    act(() => {
+      capturedOnPageChange?.(1) // page 2
+    })
+
+    // Progress from another device changes the stored page while this chapter is open.
+    mockProgress['one-piece/chapter-1'] = {
+      id: 'one-piece/chapter-1',
+      chapterDTag: 'one-piece/chapter-1',
+      page: 3,
+      updatedAt: Date.now() + 1000,
+    }
+    try {
+      rerender(
+        <MemoryRouter initialEntries={['/comic/one-piece/chapter/' + encodeURIComponent('one-piece/chapter-1')]}>
+          <Routes>
+            <Route path="/comic/:dTag/chapter/:chapterId" element={<ReaderScreen />} />
+          </Routes>
+        </MemoryRouter>,
+      )
+      expect(screen.getByText('2 / 3')).toBeInTheDocument()
+    } finally {
+      delete mockProgress['one-piece/chapter-1']
+    }
+  })
+
   it('calls setProgress with page 1 for idx 0', () => {
     renderReader()
     act(() => {

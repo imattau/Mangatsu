@@ -68,7 +68,6 @@ Screens call `service.*` directly (via `useNostr()`) and also read/write the Zus
 - `DEFAULT_RELAYS` (`stores/relayStore.ts`) is used until the user's kind 10002 relay list loads; `NostrContext` then stores that list via `setRelays`, and `service.getRelays()` / `activeRelays()` return it. The 10002/10063 subscription always queries `DEFAULT_RELAYS` too (they include indexers such as purplepag.es), so list changes made elsewhere are still seen.
 - `REMOTE_SIGNER_RELAYS` (`lib/remoteSigner.ts`) are added to NIP-46 bunker/nostrconnect connections.
 - `SEARCH_RELAYS` (`NostrService.ts`) are only for NIP-50 profile search (below).
-- Reading progress (kind 30301, `screens/Reader/useProgressPublisher.ts`) is published to the user's relays but never read back: `readStore` is local only, so progress does not yet sync between devices.
 - Before adding a relay, check it is reachable and serves NIP-11 (`curl -H 'Accept: application/nostr+json' https://<host>`); relay.nostr.band went offline and was replaced by relay.ditto.pub in 0.1.19.
 
 ### Profile search
@@ -84,6 +83,10 @@ Kinds 3, 10063 and 30003 are replaceable: publishing replaces the user's list in
 - `setLibraryEntry(aTag, saved)` – kind 30003 library. Decrypts the existing list (account signer's `nip44`, else `window.nostr` / nsec), keeps entries it doesn't recognise (both plain `30040:…` strings and `['a', …]` tags count as saved comics), and refuses if the list can't be decrypted or parsed.
 
 Each returns the resulting list; write it back to the store (`setAll`, `setServers`) rather than assuming the optimistic local edit. Tests: `src/test/NostrServiceContacts.test.ts`, `src/test/NostrServiceLibrary.test.ts`.
+
+### Reading progress sync
+
+The Reader saves progress to `readStore` and, 2 s after the page stops changing, publishes a kind 30301 event (`useProgressPublisher`). `NostrContext` subscribes to the user's 30301 events (`service.subscribeToReadingProgress`) and applies each through `readStore.mergeRemoteProgress`, which keeps whichever of local and remote is newer (`updatedAt` ms vs `created_at` × 1000), so this device's own echoes don't move it back. The Reader takes the saved page only when a chapter opens; synced updates never scroll an open chapter.
 
 ### Offline reading
 
