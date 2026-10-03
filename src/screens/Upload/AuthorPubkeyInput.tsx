@@ -1,6 +1,9 @@
 import { useState, useEffect, useId, useRef } from 'react'
-import { decode } from 'nostr-tools/nip19'
+import { decode, npubEncode } from 'nostr-tools/nip19'
+import { isNip05, queryProfile } from 'nostr-tools/nip05'
 import { useNostr } from '@/context/NostrContext'
+import type { ProfileSearchResult } from '@/services/NostrService'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,12 +14,6 @@ export interface AuthorPubkeyInputProps {
 }
 
 type Mode = 'paste' | 'search'
-
-interface ProfileResult {
-  pubkey: string
-  displayName: string
-  nip05?: string
-}
 
 function isHex(s: string): boolean {
   return /^[0-9a-f]{64}$/i.test(s)
@@ -34,6 +31,11 @@ function tryDecodeNpub(raw: string): string | null {
   return null
 }
 
+function shortNpub(hex: string): string {
+  const npub = npubEncode(hex)
+  return `${npub.slice(0, 12)}…${npub.slice(-6)}`
+}
+
 function parseDisplayName(contentJson: string): string {
   try {
     const obj = JSON.parse(contentJson)
@@ -49,21 +51,21 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
   const [pasteError, setPasteError] = useState('')
   const [resolvedName, setResolvedName] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<ProfileResult[]>([])
+  const [searchResults, setSearchResults] = useState<ProfileSearchResult[]>([])
   const [searching, setSearching] = useState(false)
+  const [searchedQuery, setSearchedQuery] = useState('')
   const { service, syncGeneration } = useNostr()
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const searchCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRunRef = useRef(0)
   const inputId = useId()
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const runs = searchRunRef
+    return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-      if (searchCloseTimerRef.current) clearTimeout(searchCloseTimerRef.current)
-    },
-    [],
-  )
+      runs.current += 1 // ignore a search that finishes after unmount
+    }
+  }, [])
 
   useEffect(() => {
     if (!value) {
@@ -112,6 +114,7 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
     if (!q.trim()) {
       searchRunRef.current += 1 // drop any search still in flight
       setSearchResults([])
+      setSearchedQuery('')
       setSearching(false)
       return
     }
@@ -119,39 +122,28 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
       // Ignore results from an earlier query that finishes after this one.
       const run = ++searchRunRef.current
       setSearching(true)
-      const results: ProfileResult[] = []
-      const relays = service['getRelays']?.() ?? []
-      const sub = service.relayPool.subscription(
-        relays,
-        [{ kinds: [0], limit: 20 }],
-        { eventStore: service.eventStore },
-      )
-      const s = sub.subscribe({
-        next: (event: { pubkey: string; content: string }) => {
-          try {
-            const obj = JSON.parse(event.content)
-            const displayName: string = obj.display_name || obj.name || ''
-            const nip05: string = obj.nip05 || ''
-            const queryLower = q.toLowerCase()
-            if (
-              displayName.toLowerCase().includes(queryLower) ||
-              nip05.toLowerCase().includes(queryLower)
-            ) {
-              results.push({ pubkey: event.pubkey, displayName, nip05 })
-            }
-          } catch { /* skip */ }
-        },
-      })
-      searchCloseTimerRef.current = setTimeout(() => {
-        s.unsubscribe()
+      void findProfiles(q.trim()).then((results) => {
         if (run !== searchRunRef.current) return
-        setSearchResults(results.slice(0, 10))
+        setSearchResults(results)
+        setSearchedQuery(q.trim())
         setSearching(false)
-      }, 2000)
+      })
     }, 400)
   }
 
-  function selectResult(result: ProfileResult) {
+  /** NIP-50 relay search, plus a direct NIP-05 lookup when the query is an address. */
+  async function findProfiles(q: string): Promise<ProfileSearchResult[]> {
+    const [nip05Match, relayResults] = await Promise.all([
+      isNip05(q) ? queryProfile(q).catch(() => null) : Promise.resolve(null),
+      service.searchProfiles(q),
+    ])
+    if (!nip05Match) return relayResults
+    const fromRelays = relayResults.find((result) => result.pubkey === nip05Match.pubkey)
+    const verified = { ...(fromRelays ?? { pubkey: nip05Match.pubkey, displayName: '' }), nip05: q }
+    return [verified, ...relayResults.filter((result) => result.pubkey !== nip05Match.pubkey)]
+  }
+
+  function selectResult(result: ProfileSearchResult) {
     onChange(result.pubkey, result.displayName)
     setPasteRaw(result.pubkey)
     setMode('paste')
@@ -208,7 +200,11 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
             }}
           />
           <p aria-live="polite" className="mt-1 text-xs text-muted-foreground">
-            {searching ? 'Searching relays...' : ''}
+            {searching
+              ? 'Searching relays...'
+              : searchedQuery && searchResults.length === 0
+                ? `No profiles found for "${searchedQuery}"`
+                : ''}
           </p>
           {searchResults.length > 0 && (
             <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border bg-popover">
@@ -217,12 +213,22 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
                   <button
                     type="button"
                     onClick={() => selectResult(r)}
-                    className="w-full px-3 py-2 text-left text-sm outline-none hover:bg-muted focus-visible:bg-muted"
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm outline-none hover:bg-muted focus-visible:bg-muted"
                   >
-                    <span className="font-medium">{r.displayName}</span>
-                    {r.nip05 && (
-                      <span className="ml-2 text-xs text-muted-foreground">{r.nip05}</span>
-                    )}
+                    <Avatar className="size-8 shrink-0">
+                      {r.picture ? <AvatarImage src={r.picture} alt="" /> : null}
+                      <AvatarFallback className="text-xs">
+                        {(r.displayName || r.nip05 || '?').slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">
+                        {r.displayName || shortNpub(r.pubkey)}
+                      </span>
+                      {r.nip05 && (
+                        <span className="block truncate text-xs text-muted-foreground">{r.nip05}</span>
+                      )}
+                    </span>
                   </button>
                 </li>
               ))}

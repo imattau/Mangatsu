@@ -8,6 +8,7 @@ vi.mock('../../context/NostrContext', () => ({
   useNostr: () => ({
     service: {
       eventStore: {},
+      searchProfiles: async () => [],
       relayPool: { subscription: () => ({ subscribe: () => ({ unsubscribe: () => {} }) }) },
     },
     syncGeneration: 0,
