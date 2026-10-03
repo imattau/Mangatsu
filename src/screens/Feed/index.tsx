@@ -10,6 +10,14 @@ import type { Comic } from '@/types'
 import { BlossomImage } from '@/components/BlossomImage'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { NostrEvent } from 'applesauce-core/helpers/event'
+import { Search, UserMinus, UserPlus, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { cn } from '@/lib/utils'
 
 type Tab = 'global' | 'follows' | 'authors'
 
@@ -30,6 +38,8 @@ function truncatePubkey(pubkey: string) {
 function resolveAuthorPubkey(comic: Comic) {
   return comic.authorPubkey || comic.pubkey
 }
+
+const SEARCH_DEBOUNCE_MS = 250
 
 function authorInitials(label: string) {
   const parts = label.trim().split(/\s+/).filter(Boolean)
@@ -74,6 +84,8 @@ export function FeedScreen() {
     Array<{ pubkey: string; count: number; latest: Comic }>
   >([])
   const [authorDirectoryLoading, setAuthorDirectoryLoading] = useState(false)
+  const [followPending, setFollowPending] = useState<Record<string, boolean>>({})
+  const [followError, setFollowError] = useState('')
 
   // Subscribe to global comics
   useEffect(() => {
@@ -105,6 +117,15 @@ export function FeedScreen() {
   const activeTag = searchParams.get('tag')?.trim() ?? ''
   const activeAuthor = searchParams.get('author')?.trim() ?? ''
   const searchQuery = searchParams.get('q')?.trim() ?? ''
+
+  // The search box keeps its own value so typing isn't trimmed mid-word; the URL follows
+  // after a short pause. Pick up outside URL changes (Clear, back/forward) during render.
+  const [searchInput, setSearchInput] = useState(searchQuery)
+  const [syncedSearchQuery, setSyncedSearchQuery] = useState(searchQuery)
+  if (searchQuery !== syncedSearchQuery) {
+    setSyncedSearchQuery(searchQuery)
+    if (searchInput.trim() !== searchQuery) setSearchInput(searchQuery)
+  }
   const authorPubkeys = useMemo(() => followedPubkeys.filter(Boolean), [followedPubkeys])
 
   useEffect(() => {
@@ -194,7 +215,6 @@ export function FeedScreen() {
     activeAuthor,
     activeTab,
     activeTag,
-    authorPubkeys,
     indexVersion,
     searchQuery,
     service.comicIndex,
@@ -235,40 +255,65 @@ export function FeedScreen() {
     }
   }, [authorProfiles, feedComics, service, syncGeneration])
 
-  function handleToggleFollow(authorPubkey: string) {
-    const isFollowing = followedPubkeys.includes(authorPubkey)
-    const nextFollows = isFollowing
-      ? followedPubkeys.filter((pk) => pk !== authorPubkey)
-      : [...followedPubkeys, authorPubkey]
-    
-    // optimistic update
-    setFollowedPubkeys(nextFollows)
+  useEffect(() => {
+    const next = searchInput.trim()
+    if (next === searchQuery) return
+    const timeout = window.setTimeout(() => {
+      setSearchParams(
+        (current) => {
+          const updated = new URLSearchParams(current)
+          if (next) updated.set('q', next)
+          else updated.delete('q')
+          return updated
+        },
+        { replace: true },
+      )
+    }, SEARCH_DEBOUNCE_MS)
+    return () => window.clearTimeout(timeout)
+  }, [searchInput, searchQuery, setSearchParams])
 
-    service.publishContactList(nextFollows).catch((err) => {
-      console.error('Failed to update follow list:', err)
-      // revert on failure
-      setFollowedPubkeys(followedPubkeys)
+  async function handleToggleFollow(authorPubkey: string) {
+    const follow = !followedPubkeys.includes(authorPubkey)
+    const applyLocally = (shouldFollow: boolean) =>
+      setFollowedPubkeys((current) =>
+        shouldFollow
+          ? [...current.filter((pk) => pk !== authorPubkey), authorPubkey]
+          : current.filter((pk) => pk !== authorPubkey),
+      )
+
+    setFollowError('')
+    setFollowPending((current) => ({ ...current, [authorPubkey]: true }))
+    applyLocally(follow)
+    try {
+      setFollowedPubkeys(await service.setFollow(authorPubkey, follow))
+    } catch (err) {
+      applyLocally(!follow)
+      setFollowError(err instanceof Error ? err.message : 'Failed to update your follows')
+    } finally {
+      setFollowPending((current) => {
+        const next = { ...current }
+        delete next[authorPubkey]
+        return next
+      })
+    }
+  }
+
+  function updateSearchParams(next: { tag?: string | null; author?: string | null; q?: string | null }) {
+    setSearchParams((current) => {
+      const updated = new URLSearchParams(current)
+      for (const key of ['tag', 'author', 'q'] as const) {
+        const value = next[key]
+        if (value === undefined) continue
+        if (value) updated.set(key, value)
+        else updated.delete(key)
+      }
+      return updated
     })
   }
 
-  function updateSearchParams(next: { tag?: string | null; author?: string | null }) {
-    const updated = new URLSearchParams(searchParams)
-    if (next.tag !== undefined) {
-      if (next.tag) updated.set('tag', next.tag)
-      else updated.delete('tag')
-    }
-    if (next.author !== undefined) {
-      if (next.author) updated.set('author', next.author)
-      else updated.delete('author')
-    }
-    setSearchParams(updated)
-  }
-
-  function updateQuery(value: string) {
-    const updated = new URLSearchParams(searchParams)
-    if (value.trim()) updated.set('q', value.trim())
-    else updated.delete('q')
-    setSearchParams(updated)
+  function clearFilters() {
+    setSearchInput('')
+    updateSearchParams({ tag: null, author: null, q: null })
   }
 
   function authorLabel(authorPubkey: string) {
@@ -279,14 +324,17 @@ export function FeedScreen() {
     return authorProfiles[authorPubkey]?.picture || null
   }
 
+  const showComicSkeleton =
+    feedLoading && feedComics.length === 0 && (activeTab !== 'authors' || Boolean(activeAuthor))
+
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] text-zinc-100">
+    <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(9,9,11,1),_rgba(15,15,18,1)_50%,_rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] text-foreground">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <header className="flex items-center justify-between">
           <div className="flex min-w-0 items-center gap-3 overflow-hidden">
             <BrandMark size="sm" showLabel={false} />
             <div className="min-w-0">
-              <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
+              <p className="text-[0.65rem] uppercase tracking-[0.45em] text-muted-foreground">Mangatsu</p>
               <h1 className="mt-2 truncate text-2xl font-semibold tracking-tight">Feed</h1>
             </div>
           </div>
@@ -296,270 +344,223 @@ export function FeedScreen() {
           </div>
         </header>
 
-        {/* Tabs */}
-        <div className="flex gap-1 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-1">
-          {(['global', 'follows', 'authors'] as Tab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 rounded-xl py-2 text-sm font-medium transition capitalize ${
-                activeTab === tab
-                  ? 'bg-zinc-800 text-white'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {tab === 'global' ? 'Global' : tab === 'follows' ? 'Follows' : 'Authors'}
-            </button>
-          ))}
-        </div>
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as Tab)} className="gap-6">
+          <TabsList className="h-11 w-full rounded-2xl p-1">
+            <TabsTrigger value="global" className="rounded-xl">Global</TabsTrigger>
+            <TabsTrigger value="follows" className="rounded-xl">Follows</TabsTrigger>
+            <TabsTrigger value="authors" className="rounded-xl">Authors</TabsTrigger>
+          </TabsList>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3">
-          <label className="block">
-            <span className="sr-only">Search comics</span>
-            <input
+          <div className="relative">
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
               type="search"
-              value={searchQuery}
-              onChange={(e) => updateQuery(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search title, author, description, or tags"
-              className="w-full rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-500"
+              aria-label="Search comics"
+              className="h-11 rounded-xl pl-9"
             />
-          </label>
-        </div>
-
-        {activeTag || activeAuthor ? (
-          <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 text-sm">
-            {activeTag ? (
-              <>
-                <span className="text-zinc-500">Tag:</span>
-                <button
-                  type="button"
-                  onClick={() => updateSearchParams({ tag: null })}
-                  className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-zinc-100 transition hover:border-zinc-500"
-                >
-                  {activeTag}
-                </button>
-              </>
-            ) : null}
-            {activeAuthor ? (
-              <>
-                <span className="text-zinc-500">Author:</span>
-                <button
-                  type="button"
-                  onClick={() => updateSearchParams({ author: null })}
-                  className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-zinc-100 transition hover:border-zinc-500"
-                >
-                  {authorLabel(activeAuthor)}
-                </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                updateSearchParams({ tag: null, author: null })
-                updateQuery('')
-              }}
-              className="ml-auto text-zinc-400 transition hover:text-zinc-100"
-            >
-              Clear
-            </button>
           </div>
-        ) : null}
 
-        {/* Content */}
-        {feedLoading && feedComics.length === 0 && (activeTab !== 'authors' || Boolean(activeAuthor)) ? (
-          <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
-            <p className="text-lg font-medium text-zinc-100">Loading comics</p>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
-              Building the local index from relays.
-            </p>
-          </section>
-        ) : activeTab === 'follows' && followedPubkeys.length === 0 ? (
-          <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
-            <p className="text-lg font-medium text-zinc-100">No follows yet</p>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
-              Follow people on Nostr to see their comics here.
-            </p>
-          </section>
-        ) : activeTab === 'authors' && !activeAuthor ? (
-          authorDirectoryLoading ? (
-            <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
-              <p className="text-lg font-medium text-zinc-100">Loading authors</p>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
-                Aggregating authors from the local catalog.
-              </p>
-            </section>
-          ) : authorDirectory.length === 0 ? (
-            <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
-              <p className="text-lg font-medium text-zinc-100">No authors found</p>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
-                Authors will appear here once Mangatsu comics have synced.
-              </p>
-            </section>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {authorDirectory.map((author) => {
-                const isFollowing = followedPubkeys.includes(author.pubkey)
-                return (
-                  <div
-                    key={author.pubkey}
-                    className="relative flex flex-col justify-between rounded-[1.5rem] border border-zinc-800 bg-zinc-950/70 p-5 transition hover:border-zinc-600 hover:bg-zinc-900"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <button
-                        type="button"
-                        onClick={() => updateSearchParams({ author: author.pubkey })}
-                        className="flex items-center gap-3 text-left focus:outline-none min-w-0 flex-1 group"
+          {activeTag || activeAuthor || searchQuery ? (
+            <div className="-mt-2 flex flex-wrap items-center gap-2 text-sm">
+              {activeTag ? (
+                <>
+                  <span className="text-muted-foreground">Tag:</span>
+                  <FilterChip label={activeTag} onRemove={() => updateSearchParams({ tag: null })} />
+                </>
+              ) : null}
+              {activeAuthor ? (
+                <>
+                  <span className="text-muted-foreground">Author:</span>
+                  <FilterChip
+                    label={authorLabel(activeAuthor)}
+                    onRemove={() => updateSearchParams({ author: null })}
+                  />
+                </>
+              ) : null}
+              <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={clearFilters}>
+                Clear
+              </Button>
+            </div>
+          ) : null}
+
+          <TabsContent value={activeTab}>
+            {showComicSkeleton ? (
+              <div aria-busy="true" className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                <span className="sr-only">Loading comics</span>
+                {Array.from({ length: 12 }, (_, i) => (
+                  <div key={i} aria-hidden="true" className="flex flex-col gap-2">
+                    <Skeleton className="aspect-[2/3] w-full rounded-2xl" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : activeTab === 'follows' && followedPubkeys.length === 0 ? (
+              <EmptyState title="No follows yet" body="Follow people on Nostr to see their comics here." />
+            ) : activeTab === 'authors' && !activeAuthor ? (
+              authorDirectoryLoading ? (
+                <EmptyState title="Loading authors" body="Aggregating authors from the local catalog." />
+              ) : authorDirectory.length === 0 ? (
+                <EmptyState title="No authors found" body="Authors will appear here once Mangatsu comics have synced." />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {followError ? (
+                    <p role="alert" className="text-sm text-destructive">{followError}</p>
+                  ) : null}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {authorDirectory.map((author) => {
+                      const isFollowing = followedPubkeys.includes(author.pubkey)
+                      const pending = Boolean(followPending[author.pubkey])
+                      return (
+                        <div
+                          key={author.pubkey}
+                          className="relative flex flex-col justify-between rounded-[1.5rem] border bg-card/70 p-5 transition-colors hover:bg-muted/60"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <button
+                              type="button"
+                              onClick={() => updateSearchParams({ author: author.pubkey })}
+                              className="group flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                            >
+                              <AuthorAvatar
+                                pubkey={author.pubkey}
+                                name={authorLabel(author.pubkey)}
+                                picture={authorPicture(author.pubkey)}
+                              />
+                              <div className="min-w-0">
+                                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Author</p>
+                                <p className="mt-1 truncate text-base font-medium group-hover:underline">
+                                  {authorLabel(author.pubkey)}
+                                </p>
+                              </div>
+                            </button>
+
+                            {pubkey && pubkey !== author.pubkey && (
+                              <Button
+                                type="button"
+                                variant={isFollowing ? 'outline' : 'default'}
+                                size="sm"
+                                disabled={pending}
+                                onClick={() => void handleToggleFollow(author.pubkey)}
+                                aria-label={isFollowing ? 'Unfollow' : 'Follow'}
+                                className={cn(
+                                  'shrink-0 rounded-full sm:px-3',
+                                  isFollowing && 'hover:border-destructive/60 hover:text-destructive',
+                                )}
+                              >
+                                {isFollowing ? <UserMinus /> : <UserPlus />}
+                                <span className="hidden sm:inline">{isFollowing ? 'Unfollow' : 'Follow'}</span>
+                              </Button>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => updateSearchParams({ author: author.pubkey })}
+                            className="mt-4 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                          >
+                            <p className="text-sm text-muted-foreground">
+                              {author.count} comic{author.count === 1 ? '' : 's'}
+                            </p>
+                            <p className="mt-1 truncate font-mono text-xs text-muted-foreground/70">{author.pubkey}</p>
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            ) : feedComics.length === 0 ? (
+              <EmptyState title="No comics found" body="Comics will appear here as relays sync." />
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                  {feedComics.map((comic) => (
+                    <article
+                      key={`${comic.pubkey}:${comic.dTag}`}
+                      className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
+                    >
+                      <Link
+                        to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
+                        className="block rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                       >
-                        <AuthorAvatar
-                          pubkey={author.pubkey}
-                          name={authorLabel(author.pubkey)}
-                          picture={authorPicture(author.pubkey)}
+                        <ComicCover
+                          comic={comic}
+                          server={comic.coverServer || comic.blossomServer || server}
+                          blurred={comic.nsfw && !showNsfw}
                         />
-                        <div className="min-w-0">
-                          <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Author</p>
-                          <p className="mt-1 truncate text-base font-medium text-zinc-100 group-hover:text-white group-hover:underline">
-                            {authorLabel(author.pubkey)}
+                        <div className="px-0.5">
+                          <p className="text-sm font-medium leading-5">
+                            {comic.title}
                           </p>
                         </div>
-                      </button>
-
-                      {pubkey && pubkey !== author.pubkey && (
+                      </Link>
+                      <div className="px-0.5">
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleToggleFollow(author.pubkey)
-                          }}
-                          aria-label={isFollowing ? 'Unfollow' : 'Follow'}
-                          className={`flex items-center gap-1.5 rounded-full px-2.5 py-1.5 sm:px-4 sm:py-1.5 text-xs font-semibold border transition shrink-0 ${
-                            isFollowing
-                              ? 'border-zinc-700 bg-transparent text-zinc-400 hover:border-red-800 hover:text-red-400'
-                              : 'border-zinc-200 bg-zinc-200 text-zinc-950 hover:bg-zinc-100 hover:border-zinc-100'
-                          }`}
+                          onClick={() => updateSearchParams({ author: resolveAuthorPubkey(comic) })}
+                          className="flex w-full items-center gap-2 rounded-md text-left text-xs text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
                         >
-                          {isFollowing ? (
-                            <>
-                              <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="h-3.5 w-3.5"
-                              >
-                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                                <circle cx="9" cy="7" r="4" />
-                                <line x1="22" x2="16" y1="11" y2="11" />
-                              </svg>
-                              <span className="hidden sm:inline">Unfollow</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="h-3.5 w-3.5"
-                              >
-                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                                <circle cx="9" cy="7" r="4" />
-                                <line x1="19" x2="19" y1="8" y2="14" />
-                                <line x1="22" x2="16" y1="11" y2="11" />
-                              </svg>
-                              <span className="hidden sm:inline">Follow</span>
-                            </>
-                          )}
+                          <AuthorAvatar
+                            pubkey={resolveAuthorPubkey(comic)}
+                            name={authorLabel(resolveAuthorPubkey(comic))}
+                            picture={authorPicture(resolveAuthorPubkey(comic))}
+                            className="size-5"
+                          />
+                          <span>
+                            by{' '}
+                            <span className="font-medium text-foreground/80">
+                              {authorLabel(resolveAuthorPubkey(comic))}
+                            </span>
+                          </span>
                         </button>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updateSearchParams({ author: author.pubkey })}
-                      className="mt-4 text-left focus:outline-none"
-                    >
-                      <p className="text-sm text-zinc-400">
-                        {author.count} comic{author.count === 1 ? '' : 's'}
-                      </p>
-                      <p className="mt-1 truncate text-xs font-mono text-zinc-600">{author.pubkey}</p>
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          )
-        ) : feedComics.length === 0 ? (
-          <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
-            <p className="text-lg font-medium text-zinc-100">No comics found</p>
-            <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
-              Comics will appear here as relays sync.
-            </p>
-          </section>
-        ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-              {feedComics.map((comic) => (
-                <article
-                  key={`${comic.pubkey}:${comic.dTag}`}
-                  className="group flex flex-col gap-2 rounded-2xl transition hover:-translate-y-0.5"
-                >
-                  <Link
-                    to={`/comic/${comic.dTag}?pubkey=${comic.pubkey}`}
-                    className="block"
-                  >
-                    <ComicCover
-                      comic={comic}
-                      server={comic.coverServer || comic.blossomServer || server}
-                      blurred={comic.nsfw && !showNsfw}
-                    />
-                    <div className="px-0.5">
-                      <p className="text-sm font-medium leading-5 text-zinc-100 group-hover:text-white">
-                        {comic.title}
-                      </p>
-                    </div>
-                  </Link>
-                  <div className="px-0.5">
-                    <button
-                      type="button"
-                      onClick={() => updateSearchParams({ author: resolveAuthorPubkey(comic) })}
-                      className="flex w-full items-center gap-2 text-left text-xs text-zinc-500 transition hover:text-zinc-200"
-                    >
-                      <AuthorAvatar
-                        pubkey={resolveAuthorPubkey(comic)}
-                        name={authorLabel(resolveAuthorPubkey(comic))}
-                        picture={authorPicture(resolveAuthorPubkey(comic))}
-                        className="h-5 w-5"
-                      />
-                      <span>
-                        by{' '}
-                        <span className="font-medium text-zinc-400">
-                          {authorLabel(resolveAuthorPubkey(comic))}
-                        </span>
-                      </span>
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
 
-            {feedHasMore ? (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => setVisibleCount((count) => count + 60)}
-                  className="rounded-full border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-800"
-                >
-                  Load more
-                </button>
+                {feedHasMore ? (
+                  <div className="flex justify-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      disabled={feedLoading}
+                      onClick={() => setVisibleCount((count) => count + 60)}
+                      className="h-10 rounded-full px-4"
+                    >
+                      {feedLoading ? 'Loading…' : 'Load more'}
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        )}
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
+  )
+}
+
+function EmptyState({ title, body }: { title: string; body: string }) {
+  return (
+    <section className="flex min-h-[40vh] flex-col items-center justify-center rounded-[2rem] border border-dashed bg-card/40 px-6 text-center">
+      <p className="text-lg font-medium">{title}</p>
+      <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">{body}</p>
+    </section>
+  )
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <Badge asChild variant="secondary" className="h-7 gap-1.5 rounded-full pl-3 pr-2 text-sm">
+      <button type="button" onClick={onRemove} aria-label={`Remove filter ${label}`}>
+        {label}
+        <X aria-hidden="true" />
+      </button>
+    </Badge>
   )
 }
 
@@ -573,7 +574,7 @@ function ComicCover({
   blurred: boolean
 }) {
   const baseClass =
-    'aspect-[2/3] w-full rounded-2xl object-cover bg-zinc-900 shadow-lg shadow-black/20'
+    'aspect-[2/3] w-full rounded-2xl object-cover bg-muted shadow-lg shadow-black/20'
   if (blurred) {
     return (
       <div className={`${baseClass} relative overflow-hidden`}>
@@ -586,11 +587,11 @@ function ComicCover({
             alt={comic.title}
             className="h-full w-full object-cover blur-sm brightness-50"
           />
-        ) : (
-          <div className="h-full w-full bg-zinc-800" />
-        )}
-        <span className="absolute inset-0 flex items-center justify-center text-[0.6rem] font-semibold uppercase tracking-widest text-zinc-400">
-          NSFW
+        ) : null}
+        <span className="absolute inset-0 flex items-center justify-center">
+          <Badge variant="outline" className="bg-background/70 tracking-widest text-muted-foreground backdrop-blur">
+            NSFW
+          </Badge>
         </span>
       </div>
     )
@@ -612,45 +613,23 @@ function AuthorAvatar({
   pubkey,
   name,
   picture,
-  className = 'h-8 w-8',
+  className,
 }: {
   pubkey: string
   name: string
   picture: string | null
   className?: string
 }) {
-  const baseClassName = `${className} shrink-0 overflow-hidden rounded-full border border-zinc-800 bg-zinc-900`
-  if (picture) {
-    return (
-      <div className={baseClassName}>
-        <img
-          src={picture}
-          alt={name}
-          className="h-full w-full object-cover"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={(event) => {
-            event.currentTarget.style.display = 'none'
-            const fallback = event.currentTarget.parentElement?.querySelector('[data-fallback-avatar]')
-            if (fallback instanceof HTMLElement) {
-              fallback.style.display = 'flex'
-            }
-          }}
-        />
-        <div
-          data-fallback-avatar
-          className="hidden h-full w-full items-center justify-center bg-[linear-gradient(135deg,_rgba(59,130,246,0.35),_rgba(168,85,247,0.35))] text-[0.65rem] font-semibold text-white"
-          aria-hidden="true"
-        >
-          {authorInitials(name || pubkey)}
-        </div>
-      </div>
-    )
-  }
-
+  // The name is always shown next to the avatar, so the image is decorative.
   return (
-    <div className={`${baseClassName} flex items-center justify-center bg-[linear-gradient(135deg,_rgba(59,130,246,0.35),_rgba(168,85,247,0.35))] text-[0.65rem] font-semibold text-white`}>
-      {authorInitials(name || pubkey)}
-    </div>
+    <Avatar className={cn('size-8 shrink-0 border', className)}>
+      {picture ? <AvatarImage src={picture} alt="" referrerPolicy="no-referrer" /> : null}
+      <AvatarFallback
+        aria-hidden="true"
+        className="bg-[linear-gradient(135deg,_rgba(59,130,246,0.35),_rgba(168,85,247,0.35))] text-[0.65rem] font-semibold text-white"
+      >
+        {authorInitials(name || pubkey)}
+      </AvatarFallback>
+    </Avatar>
   )
 }

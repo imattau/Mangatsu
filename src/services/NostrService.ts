@@ -5,11 +5,13 @@ import { RelayPool } from 'applesauce-relay'
 import type { PublishResponse } from 'applesauce-relay'
 import { AccountManager } from 'applesauce-accounts'
 import { EventFactory } from 'applesauce-factory'
-import type { Subscription } from 'rxjs'
+import { EMPTY, catchError, lastValueFrom, takeUntil, tap, timer, toArray, type Subscription } from 'rxjs'
 import { useRelayStore, DEFAULT_RELAYS } from '@/stores/relayStore'
 import { useBlossomStore } from '@/stores/blossomStore'
 import { parseComicEvent } from '@/lib/comic'
 import { ComicIndex } from '@/services/ComicIndex'
+
+const CONTACT_LIST_TIMEOUT_MS = 8000
 
 export class NostrService {
   eventStore = new EventStore()
@@ -17,6 +19,7 @@ export class NostrService {
   accountManager = new AccountManager()
   eventFactory = new EventFactory()
   comicIndex = new ComicIndex()
+  private contactListQueue: Promise<unknown> = Promise.resolve()
 
   private getRelays(): string[] {
     const { relays } = useRelayStore.getState()
@@ -325,19 +328,89 @@ export class NostrService {
     await this.publishEvent(signed)
   }
 
-  async publishContactList(followedPubkeys: string[]): Promise<void> {
-    const account = this.accountManager.active
-    if (!account) return
+  /**
+   * Follow or unfollow one pubkey, returning the resulting follow list.
+   *
+   * Kind 3 is replaceable, so whatever we publish replaces the user's contact list in
+   * every client. Build the new event from the latest list on relays and change only
+   * the one `p` tag — never from local UI state, which may be stale or not yet loaded,
+   * and never dropping relay hints, petnames, other tags or content.
+   */
+  setFollow(targetPubkey: string, follow: boolean): Promise<string[]> {
+    // Run one at a time so concurrent toggles each build on the previous result.
+    const run = this.contactListQueue.then(() => this.applyFollow(targetPubkey, follow))
+    this.contactListQueue = run.catch(() => undefined)
+    return run
+  }
 
-    const template = {
-      kind: 3,
-      tags: followedPubkeys.map((pk) => ['p', pk]),
-      content: '',
-      created_at: Math.floor(Date.now() / 1000),
+  private async applyFollow(targetPubkey: string, follow: boolean): Promise<string[]> {
+    const account = this.accountManager.active
+    if (!account) throw new Error('Sign in to follow authors')
+
+    const base = await this.loadLatestContactList(account.pubkey)
+    const baseTags = base?.tags ?? []
+    const isFollowing = baseTags.some((tag) => tag[0] === 'p' && tag[1] === targetPubkey)
+
+    let tags = baseTags
+    if (follow && !isFollowing) {
+      tags = [...baseTags, ['p', targetPubkey]]
+    } else if (!follow && isFollowing) {
+      tags = baseTags.filter((tag) => !(tag[0] === 'p' && tag[1] === targetPubkey))
     }
 
-    const signed = await account.signer.signEvent(template)
-    await this.publishEvent(signed)
+    if (tags !== baseTags) {
+      const signed = await account.signer.signEvent({
+        kind: 3,
+        tags,
+        content: base?.content ?? '',
+        created_at: Math.max(Math.floor(Date.now() / 1000), (base?.created_at ?? 0) + 1),
+      })
+      await this.publishEvent(signed)
+    }
+
+    return tags.filter((tag) => tag[0] === 'p' && tag[1]).map((tag) => tag[1])
+  }
+
+  /**
+   * Newest kind 3 for `pubkey` from relays or the local store. Throws if relays could not
+   * be reached and nothing is cached: we can't tell "no contact list" from "not loaded",
+   * and guessing wrong would wipe the user's follows.
+   */
+  private async loadLatestContactList(pubkey: string): Promise<NostrEvent | undefined> {
+    const cached = this.eventStore.getReplaceable(3, pubkey)
+    let timedOut = false
+    let failed = false
+    const fetched = await lastValueFrom(
+      this.relayPool
+        .request(this.getRelays(), [{ kinds: [3], authors: [pubkey], limit: 1 }])
+        .pipe(
+          takeUntil(
+            timer(CONTACT_LIST_TIMEOUT_MS).pipe(
+              tap(() => {
+                timedOut = true
+              }),
+            ),
+          ),
+          catchError(() => {
+            failed = true
+            return EMPTY
+          }),
+          toArray(),
+        ),
+    )
+
+    const newest = [cached, ...fetched]
+      .filter((event): event is NostrEvent => Boolean(event))
+      .sort((a, b) => b.created_at - a.created_at)[0]
+
+    if (newest) {
+      this.eventStore.add(newest)
+      return newest
+    }
+    if (timedOut || failed) {
+      throw new Error('Could not load your contact list from relays. Try again.')
+    }
+    return undefined
   }
 }
 
