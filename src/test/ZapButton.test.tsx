@@ -107,7 +107,7 @@ describe('ZapButton', () => {
       expect(screen.getByText(/Confirm Payment/i)).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByText('Confirm ⚡'))
+    fireEvent.click(screen.getByRole('button', { name: /^confirm$/i }))
 
     await waitFor(() => {
       expect(mockPayInvoice).toHaveBeenCalledWith('lnbc210n1...')
@@ -130,5 +130,20 @@ describe('ZapButton', () => {
       expect(screen.getByText(/Zap 21 sats/i)).toBeInTheDocument()
     })
     expect(mockPayInvoice).not.toHaveBeenCalled()
+  })
+
+  it('shows the wallet error when payment fails', async () => {
+    mockConnectionString = 'nostr+walletconnect://pubkey?relay=wss://relay.example&secret=abc'
+    mockPayInvoice.mockRejectedValueOnce(new Error('Insufficient balance'))
+    renderZapButton({ authorPubkey: 'abc123' })
+    fireEvent.click(screen.getByLabelText('Zap'))
+    fireEvent.click(screen.getByText(/Zap 21 sats/i))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Confirm Payment/i)).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^confirm$/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Insufficient balance')
   })
 })
