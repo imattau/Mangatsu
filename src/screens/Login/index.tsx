@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { isTauri } from '@tauri-apps/api/core'
 import type { SerializedAccount } from 'applesauce-accounts'
@@ -17,6 +17,9 @@ import { buildRemoteSignerPermissions, buildRemoteSignerRelays } from '@/lib/rem
 import { useAuthStore, type AuthMethod } from '@/stores/authStore'
 import { initSession, clearSession } from '@/lib/sessionCrypto'
 import { QrCodeView } from './QrCodeView'
+import { Fingerprint, KeyRound, Link2, Puzzle, QrCode, Smartphone, type LucideIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 const NSEC_SESSION_KEY = 'mangatsu:nsec'
 
@@ -103,19 +106,6 @@ export function LoginScreen() {
   const [hasPasskeyIdentity, setHasPasskeyIdentity] = useState(false)
 
   useEffect(() => {
-    async function check() {
-      try {
-        const isPrfSupported = (await import('nostr-passkey')).isPRFSupported
-        const supported = await isPrfSupported()
-        if (!supported) return
-      } catch {
-        // passkey not available
-      }
-    }
-    void check()
-  }, [])
-
-  useEffect(() => {
     async function checkIdentity() {
       try {
         const { hasPasskeyIdentityOnDevice } = await import('nostr-passkey/applesauce')
@@ -147,7 +137,7 @@ export function LoginScreen() {
       await initSession()
       navigate('/')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Extension login failed.')
+      setError(describeError(cause, 'Extension login failed.'))
     } finally {
       setLoading(false)
     }
@@ -245,7 +235,7 @@ export function LoginScreen() {
       await initSession()
       navigate('/')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Bunker connection failed.')
+      setError(describeError(cause, 'Bunker connection failed.'))
     } finally {
       setLoading(false)
     }
@@ -263,7 +253,7 @@ export function LoginScreen() {
       await initSession()
       navigate('/')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Passkey unlock failed.')
+      setError(describeError(cause, 'Passkey unlock failed.'))
     } finally {
       setLoading(false)
     }
@@ -281,7 +271,7 @@ export function LoginScreen() {
       await initSession()
       navigate('/')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Passkey registration failed.')
+      setError(describeError(cause, 'Passkey registration failed.'))
     } finally {
       setLoading(false)
     }
@@ -307,7 +297,8 @@ export function LoginScreen() {
     }
   }
 
-  function handleCancel(method: Exclude<ActiveMethod, 'none'>) {
+  /** Drop anything a method left behind: typed keys and any half-open bunker connection. */
+  function resetMethod(method: Exclude<ActiveMethod, 'none'>) {
     if (method === 'nsec') {
       setNsecValue('')
     }
@@ -319,6 +310,10 @@ export function LoginScreen() {
     if (method === 'passkey') {
       setPasskeyNsecValue('')
     }
+  }
+
+  function handleCancel(method: Exclude<ActiveMethod, 'none'>) {
+    resetMethod(method)
     setActiveMethod('none')
     setError(null)
   }
@@ -330,133 +325,131 @@ export function LoginScreen() {
     clearAuth()
   }
 
+  function openMethod(method: Exclude<ActiveMethod, 'none'>) {
+    if (activeMethod !== 'none' && activeMethod !== method) resetMethod(activeMethod)
+    setError(null)
+    setActiveMethod(method)
+  }
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(39,39,42,0.85),_rgba(9,9,11,1)_55%)] px-4 pt-[calc(env(safe-area-inset-top)+2rem)] pb-[calc(env(safe-area-inset-bottom)+2rem)] text-zinc-100">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(39,39,42,0.85),_rgba(9,9,11,1)_55%)] px-4 pt-[calc(env(safe-area-inset-top)+2rem)] pb-[calc(env(safe-area-inset-bottom)+2rem)] text-foreground">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col justify-center">
         <div className="mb-8 text-center">
           <BrandMark size="lg" className="justify-center" />
           <h1 className="mt-3 text-4xl font-semibold tracking-tight">Sign in</h1>
-          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-zinc-400">
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
             Choose a login method. nsec stays in session storage only; extension and NIP-46
             methods are transient by design.
           </p>
         </div>
 
         {error ? (
-          <div className="mb-4 rounded-2xl border border-red-900/40 bg-red-950/60 px-4 py-3 text-sm text-red-200">
+          <div
+            role="alert"
+            className="mb-4 rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
             {error}
           </div>
         ) : null}
 
         <div className="flex flex-col gap-3">
           {isNativeApp ? null : (
-            <button
-              type="button"
-              onClick={handleExtension}
+            <MethodButton
+              icon={Puzzle}
+              title="Browser Extension"
+              description="Use a NIP-07 extension."
               disabled={loading}
-              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <div className="text-sm font-semibold text-white">Browser Extension</div>
-              <p className="mt-1 text-sm leading-5 text-zinc-400">Use a NIP-07 extension.</p>
-            </button>
+              onClick={handleExtension}
+            />
           )}
 
           {isAmberSupported ? (
-            <button
-              type="button"
-              onClick={handleAmber}
+            <MethodButton
+              icon={Smartphone}
+              title="Signer App"
+              description="Use Amber or another NIP-55 signer app."
               disabled={loading}
-              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <div className="text-sm font-semibold text-white">Signer App</div>
-              <p className="mt-1 text-sm leading-5 text-zinc-400">
-                Use Amber or another NIP-55 signer app.
-              </p>
-            </button>
+              onClick={handleAmber}
+            />
           ) : null}
 
           {activeMethod === 'nsec' ? (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4">
-              <div className="text-sm font-semibold text-white">Paste nsec key</div>
-              <p className="mt-1 text-sm leading-5 text-amber-200">
+            <MethodPanel icon={KeyRound} title="Paste nsec key">
+              <p className="text-sm leading-5 text-amber-200">
                 This key is stored in session storage only.
               </p>
-              <input
-                type="password"
-                value={nsecValue}
-                onChange={(event) => setNsecValue(event.target.value)}
-                placeholder="nsec1..."
-                autoComplete="off"
-                className="mt-3 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-zinc-500"
-              />
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleNsec}
-                  disabled={loading || !nsecValue.trim()}
-                  className="flex-1 rounded-xl bg-white px-4 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Continue
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleCancel('nsec')}
-                  className="rounded-xl border border-zinc-700 px-4 py-3 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+              <form
+                className="mt-3 flex flex-col gap-3"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (nsecValue.trim()) void handleNsec()
+                }}
+              >
+                <Input
+                  type="password"
+                  value={nsecValue}
+                  onChange={(event) => setNsecValue(event.target.value)}
+                  placeholder="nsec1..."
+                  aria-label="Private key (nsec)"
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoFocus
+                  className="h-11 rounded-xl"
+                />
+                <PanelActions
+                  submitLabel={loading ? 'Signing in…' : 'Continue'}
+                  submitDisabled={loading || !nsecValue.trim()}
+                  onCancel={() => handleCancel('nsec')}
+                />
+              </form>
+            </MethodPanel>
           ) : (
-            <button
-              type="button"
-              onClick={() => setActiveMethod('nsec')}
-              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
-            >
-              <div className="text-sm font-semibold text-white">Paste nsec key</div>
-              <p className="mt-1 text-sm leading-5 text-zinc-400">Sign in from a private key.</p>
-            </button>
+            <MethodButton
+              icon={KeyRound}
+              title="Paste nsec key"
+              description="Sign in from a private key."
+              disabled={loading}
+              onClick={() => openMethod('nsec')}
+            />
           )}
 
           {activeMethod === 'bunker' ? (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4">
-              <div className="text-sm font-semibold text-white">Bunker URI</div>
-              <p className="mt-1 text-sm leading-5 text-zinc-400">Connect to a remote signer.</p>
-              <input
-                type="text"
-                value={bunkerValue}
-                onChange={(event) => setBunkerValue(event.target.value)}
-                placeholder="bunker://..."
-                autoComplete="off"
-                className="mt-3 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-zinc-500"
-              />
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleBunker}
-                  disabled={loading || !bunkerValue.trim()}
-                  className="flex-1 rounded-xl bg-white px-4 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? 'Connecting…' : 'Connect'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleCancel('bunker')}
-                  className="rounded-xl border border-zinc-700 px-4 py-3 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+            <MethodPanel icon={Link2} title="Bunker URI">
+              <p className="text-sm leading-5 text-muted-foreground">Connect to a remote signer.</p>
+              <form
+                className="mt-3 flex flex-col gap-3"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  if (bunkerValue.trim()) void handleBunker()
+                }}
+              >
+                <Input
+                  type="text"
+                  value={bunkerValue}
+                  onChange={(event) => setBunkerValue(event.target.value)}
+                  placeholder="bunker://..."
+                  aria-label="Bunker URI"
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  autoFocus
+                  className="h-11 rounded-xl"
+                />
+                <PanelActions
+                  submitLabel={loading ? 'Connecting…' : 'Connect'}
+                  submitDisabled={loading || !bunkerValue.trim()}
+                  onCancel={() => handleCancel('bunker')}
+                />
+              </form>
+            </MethodPanel>
           ) : (
-            <button
-              type="button"
-              onClick={() => setActiveMethod('bunker')}
-              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
-            >
-              <div className="text-sm font-semibold text-white">Bunker URI</div>
-              <p className="mt-1 text-sm leading-5 text-zinc-400">Use a NIP-46 remote signer.</p>
-            </button>
+            <MethodButton
+              icon={Link2}
+              title="Bunker URI"
+              description="Use a NIP-46 remote signer."
+              disabled={loading}
+              onClick={() => openMethod('bunker')}
+            />
           )}
 
           {activeMethod === 'qr' ? (
@@ -469,90 +462,161 @@ export function LoginScreen() {
               onCancel={() => handleCancel('qr')}
             />
           ) : (
-            <button
-              type="button"
-              onClick={() => setActiveMethod('qr')}
-              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
-            >
-              <div className="text-sm font-semibold text-white">QR Code</div>
-              <p className="mt-1 text-sm leading-5 text-zinc-400">
-                Generate a nostrconnect:// code for a mobile signer.
-              </p>
-            </button>
+            <MethodButton
+              icon={QrCode}
+              title="QR Code"
+              description="Generate a nostrconnect:// code for a mobile signer."
+              disabled={loading}
+              onClick={() => openMethod('qr')}
+            />
           )}
 
           {isNativeApp ? null : activeMethod === 'passkey' ? (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/90 p-4">
-              <div className="mb-3 text-sm font-semibold text-white">Passkey</div>
+            <MethodPanel icon={Fingerprint} title="Passkey">
               {hasPasskeyIdentity ? (
-                <button
+                <Button
                   type="button"
+                  size="lg"
                   onClick={handlePasskeyUnlock}
                   disabled={loading}
-                  className="w-full rounded-xl bg-white px-4 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="h-11 w-full rounded-xl"
                 >
                   {loading ? 'Unlocking…' : 'Unlock with Passkey'}
-                </button>
+                </Button>
               ) : (
                 <div className="flex flex-col gap-3">
-                  <button
+                  <Button
                     type="button"
+                    size="lg"
                     onClick={handlePasskeyRegister}
                     disabled={loading}
-                    className="rounded-xl bg-white px-4 py-3 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="h-11 rounded-xl"
                   >
                     {loading ? 'Registering…' : 'Register New Passkey'}
-                  </button>
-                  <div className="text-xs text-zinc-500">or import an existing key</div>
-                  <input
-                    type="password"
-                    value={passkeyNsecValue}
-                    onChange={(event) => setPasskeyNsecValue(event.target.value)}
-                    placeholder="nsec1..."
-                    autoComplete="off"
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-500 focus:border-zinc-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={handlePasskeyImportNsec}
-                    disabled={loading || !passkeyNsecValue.trim()}
-                    className="rounded-xl border border-zinc-700 px-4 py-3 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  </Button>
+                  <div className="text-xs text-muted-foreground">or import an existing key</div>
+                  <form
+                    className="flex flex-col gap-3"
+                    onSubmit={(event) => {
+                      event.preventDefault()
+                      if (passkeyNsecValue.trim()) void handlePasskeyImportNsec()
+                    }}
                   >
-                    Import Key into Passkey
-                  </button>
+                    <Input
+                      type="password"
+                      value={passkeyNsecValue}
+                      onChange={(event) => setPasskeyNsecValue(event.target.value)}
+                      placeholder="nsec1..."
+                      aria-label="Private key to import into a passkey (nsec)"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="h-11 rounded-xl"
+                    />
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      size="lg"
+                      disabled={loading || !passkeyNsecValue.trim()}
+                      className="h-11 rounded-xl"
+                    >
+                      Import Key into Passkey
+                    </Button>
+                  </form>
                 </div>
               )}
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="lg"
                 onClick={() => handleCancel('passkey')}
-                className="mt-3 w-full rounded-xl border border-zinc-700 px-4 py-3 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                className="mt-3 h-11 w-full rounded-xl"
               >
                 Cancel
-              </button>
-            </div>
+              </Button>
+            </MethodPanel>
           ) : (
-            <button
-              type="button"
-              onClick={() => setActiveMethod('passkey')}
+            <MethodButton
+              icon={Fingerprint}
+              title="Passkey"
+              description="Use WebAuthn biometrics or a hardware security key."
               disabled={loading}
-              className="rounded-2xl border border-zinc-800 bg-zinc-950/90 px-4 py-4 text-left transition hover:border-zinc-600 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <div className="text-sm font-semibold text-white">Passkey</div>
-              <p className="mt-1 text-sm leading-5 text-zinc-400">
-                Use WebAuthn biometrics or a hardware security key.
-              </p>
-            </button>
+              onClick={() => openMethod('passkey')}
+            />
           )}
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={handleClearSavedSession}
-          className="mt-6 text-center text-xs uppercase tracking-[0.3em] text-zinc-600 transition hover:text-zinc-400"
+          className="mx-auto mt-6 text-xs uppercase tracking-[0.3em] text-muted-foreground"
         >
           Clear saved session
-        </button>
+        </Button>
       </div>
+    </div>
+  )
+}
+
+function MethodButton({
+  icon: Icon,
+  title,
+  description,
+  disabled,
+  onClick,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+  disabled?: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-start gap-3 rounded-2xl border bg-card/90 px-4 py-4 text-left outline-none transition-colors hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <Icon aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+      <span>
+        <span className="block text-sm font-semibold">{title}</span>
+        <span className="mt-1 block text-sm leading-5 text-muted-foreground">{description}</span>
+      </span>
+    </button>
+  )
+}
+
+function MethodPanel({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
+  return (
+    <section aria-label={title} className="rounded-2xl border bg-card/90 p-4">
+      <h2 className="mb-1 flex items-center gap-3 text-sm font-semibold">
+        <Icon aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+        {title}
+      </h2>
+      {children}
+    </section>
+  )
+}
+
+function PanelActions({
+  submitLabel,
+  submitDisabled,
+  onCancel,
+}: {
+  submitLabel: string
+  submitDisabled: boolean
+  onCancel: () => void
+}) {
+  return (
+    <div className="flex gap-2">
+      <Button type="submit" size="lg" disabled={submitDisabled} className="h-11 flex-1 rounded-xl">
+        {submitLabel}
+      </Button>
+      <Button type="button" variant="outline" size="lg" onClick={onCancel} className="h-11 rounded-xl px-4">
+        Cancel
+      </Button>
     </div>
   )
 }
