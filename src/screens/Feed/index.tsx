@@ -236,18 +236,19 @@ export function FeedScreen() {
   }, [authorProfiles, feedComics, service, syncGeneration])
 
   function handleToggleFollow(authorPubkey: string) {
-    const isFollowing = followedPubkeys.includes(authorPubkey)
-    const nextFollows = isFollowing
-      ? followedPubkeys.filter((pk) => pk !== authorPubkey)
-      : [...followedPubkeys, authorPubkey]
-    
-    // optimistic update
-    setFollowedPubkeys(nextFollows)
+    const follow = !followedPubkeys.includes(authorPubkey)
+    const applyLocally = (shouldFollow: boolean) =>
+      setFollowedPubkeys((current) =>
+        shouldFollow
+          ? [...current.filter((pk) => pk !== authorPubkey), authorPubkey]
+          : current.filter((pk) => pk !== authorPubkey),
+      )
 
-    service.publishContactList(nextFollows).catch((err) => {
+    // optimistic update; the service builds the published list from the relays' copy
+    applyLocally(follow)
+    service.setFollow(authorPubkey, follow).then(setFollowedPubkeys, (err) => {
       console.error('Failed to update follow list:', err)
-      // revert on failure
-      setFollowedPubkeys(followedPubkeys)
+      applyLocally(!follow)
     })
   }
 

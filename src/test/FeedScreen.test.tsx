@@ -94,7 +94,7 @@ function sortComics(a: Comic, b: Comic) {
   return a.title.localeCompare(b.title)
 }
 
-const mockPublishContactList = vi.fn().mockResolvedValue(undefined)
+const mockSetFollow = vi.fn(async (pubkey: string, follow: boolean) => (follow ? [pubkey] : []))
 
 const mockComicIndex = {
   subscribe: vi.fn(() => () => {}),
@@ -149,7 +149,7 @@ vi.mock('../context/NostrContext', () => ({
       fetchProfile: vi.fn(async (pubkey: string) =>
         pubkey === 'author-pubkey' ? { name: 'Akira Toriyama' } : null,
       ),
-      publishContactList: mockPublishContactList,
+      setFollow: mockSetFollow,
     },
   }),
 }))
@@ -185,7 +185,7 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 
 describe('FeedScreen', () => {
   beforeEach(() => {
-    mockPublishContactList.mockClear()
+    mockSetFollow.mockClear()
     mockComicIndex.queryComics.mockClear()
     mockComicIndex.listAuthors.mockClear()
   })
@@ -275,12 +275,10 @@ describe('FeedScreen', () => {
     expect(followBtn).toBeInTheDocument()
 
     await user.click(followBtn)
-    expect(mockPublishContactList).toHaveBeenCalledWith(['author-pubkey'])
+    expect(mockSetFollow).toHaveBeenCalledWith('author-pubkey', true)
 
-    expect(screen.getByRole('button', { name: /^unfollow$/i })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: /^unfollow$/i }))
-    expect(mockPublishContactList).toHaveBeenLastCalledWith([])
+    await user.click(await screen.findByRole('button', { name: /^unfollow$/i }))
+    expect(mockSetFollow).toHaveBeenLastCalledWith('author-pubkey', false)
   })
 
   it('searches by title and tags', async () => {
