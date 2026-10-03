@@ -1,6 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useId, useRef } from 'react'
 import { decode } from 'nostr-tools/nip19'
 import { useNostr } from '@/context/NostrContext'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 export interface AuthorPubkeyInputProps {
   value: string          // hex pubkey or ''
@@ -50,6 +53,17 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
   const [searching, setSearching] = useState(false)
   const { service, syncGeneration } = useNostr()
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchRunRef = useRef(0)
+  const inputId = useId()
+
+  useEffect(
+    () => () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+      if (searchCloseTimerRef.current) clearTimeout(searchCloseTimerRef.current)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!value) {
@@ -96,10 +110,14 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
     setSearchQuery(q)
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
     if (!q.trim()) {
+      searchRunRef.current += 1 // drop any search still in flight
       setSearchResults([])
+      setSearching(false)
       return
     }
     searchTimerRef.current = setTimeout(() => {
+      // Ignore results from an earlier query that finishes after this one.
+      const run = ++searchRunRef.current
       setSearching(true)
       const results: ProfileResult[] = []
       const relays = service['getRelays']?.() ?? []
@@ -124,8 +142,9 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
           } catch { /* skip */ }
         },
       })
-      setTimeout(() => {
+      searchCloseTimerRef.current = setTimeout(() => {
         s.unsubscribe()
+        if (run !== searchRunRef.current) return
         setSearchResults(results.slice(0, 10))
         setSearching(false)
       }, 2000)
@@ -140,54 +159,69 @@ export function AuthorPubkeyInput({ value, onChange }: AuthorPubkeyInputProps) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <label className="text-sm text-zinc-400">Author Pubkey</label>
-        <button
+        <Label htmlFor={inputId}>Author Pubkey</Label>
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           onClick={() => setMode(mode === 'paste' ? 'search' : 'paste')}
-          className="ml-auto rounded border border-zinc-700 px-2 py-0.5 text-xs text-zinc-400 hover:text-zinc-200"
+          className="ml-auto text-muted-foreground"
         >
           {mode === 'paste' ? 'Search by name' : 'Paste pubkey'}
-        </button>
+        </Button>
       </div>
 
       {mode === 'paste' ? (
         <div>
-          <input
+          <Input
+            id={inputId}
             type="text"
             placeholder="npub1... or hex pubkey"
             value={pasteRaw}
             onChange={(e) => handlePasteInput(e.target.value)}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none"
+            aria-invalid={pasteError ? true : undefined}
+            aria-describedby={`${inputId}-status`}
+            autoCapitalize="off"
+            spellCheck={false}
           />
-          {pasteError && <p className="mt-1 text-xs text-red-400">{pasteError}</p>}
-          {resolvedName && !pasteError && (
-            <p className="mt-1 text-xs text-zinc-400">Resolved: {resolvedName}</p>
-          )}
+          <p id={`${inputId}-status`} aria-live="polite" className="mt-1 text-xs">
+            {pasteError ? (
+              <span className="text-destructive">{pasteError}</span>
+            ) : resolvedName ? (
+              <span className="text-muted-foreground">Resolved: {resolvedName}</span>
+            ) : null}
+          </p>
         </div>
       ) : (
         <div>
-          <input
-            type="text"
+          <Input
+            id={inputId}
+            type="search"
             placeholder="Search by name or NIP-05..."
             value={searchQuery}
             onChange={(e) => handleSearchInput(e.target.value)}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none"
+            // Enter would otherwise submit the surrounding details form.
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.preventDefault()
+            }}
           />
-          {searching && <p className="mt-1 text-xs text-zinc-500">Searching relays...</p>}
+          <p aria-live="polite" className="mt-1 text-xs text-muted-foreground">
+            {searching ? 'Searching relays...' : ''}
+          </p>
           {searchResults.length > 0 && (
-            <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900">
+            <ul className="mt-1 max-h-48 overflow-y-auto rounded-lg border bg-popover">
               {searchResults.map((r) => (
                 <li key={r.pubkey}>
                   <button
                     type="button"
                     onClick={() => selectResult(r)}
-                    className="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                    className="w-full px-3 py-2 text-left text-sm outline-none hover:bg-muted focus-visible:bg-muted"
                   >
                     <span className="font-medium">{r.displayName}</span>
                     {r.nip05 && (
-                      <span className="ml-2 text-xs text-zinc-500">{r.nip05}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">{r.nip05}</span>
                     )}
                   </button>
                 </li>

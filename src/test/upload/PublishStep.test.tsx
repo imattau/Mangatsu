@@ -192,6 +192,54 @@ describe('PublishStep', () => {
     expect(screen.getAllByText(/c\.example/).length).toBeGreaterThan(0)
     expect(screen.getByText(/missing 1 asset: cover/i)).toBeInTheDocument()
   })
+
+  const baseMetadata = {
+    title: 'New Comic',
+    authorName: '',
+    authorPubkey: '',
+    authorDisplayName: '',
+    description: '',
+    tags: '',
+    language: '',
+    nsfw: false,
+    coverFile: null,
+    coverMode: 'file' as const,
+  }
+
+  it('offers to try again when building the publish draft fails', async () => {
+    mockBuildPublishDraft.mockRejectedValueOnce(new Error('Signer rejected the request'))
+    const onDone = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <PublishStep isNewComic metadata={baseMetadata} pageUploads={[]} coverUpload={null} serverResults={[]} onDone={onDone} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /^publish$/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/signer rejected the request/i)
+
+    await user.click(screen.getByRole('button', { name: /try again/i }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('new-comic'))
+    expect(mockBuildPublishDraft).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not crash on a malformed server URL', () => {
+    render(
+      <PublishStep
+        isNewComic
+        metadata={baseMetadata}
+        pageUploads={[{ hash: 'page-1', servers: ['https://a.example'], missingServers: ['not a url'] }]}
+        coverUpload={null}
+        serverResults={[
+          { url: 'https://a.example', uploaded: 1, total: 1 },
+          { url: 'not a url', uploaded: 0, total: 1 },
+        ]}
+        onDone={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('a.example')).toBeInTheDocument()
+    expect(screen.getAllByText('not a url').length).toBeGreaterThan(0)
+  })
 })
 
 describe('buildPublishDraft — nsfw flag', () => {

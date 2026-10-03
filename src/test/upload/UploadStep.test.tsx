@@ -1,4 +1,5 @@
-import { render, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { UploadStep } from '../../screens/Upload/UploadStep'
 import { webTorrentService } from '../../services/WebTorrentService'
@@ -96,5 +97,33 @@ describe('UploadStep', () => {
       'hash-1',
       ['https://a.example/'],
     )
+  })
+
+  it('restarts the progress count when retrying after a failure', async () => {
+    vi.spyOn(webTorrentService, 'isWebTorrentEnabled').mockReturnValue(false)
+    const onDone = vi.fn()
+    const pages = [
+      new File(['one'], 'one.webp', { type: 'image/webp' }),
+      new File(['two'], 'two.webp', { type: 'image/webp' }),
+    ]
+    // First attempt: page one uploads, page two fails everywhere.
+    let failPageTwo = true
+    mockUpload.mockImplementation(async (file: File, serverUrl: string) => {
+      if (file.name === 'two.webp' && failPageTwo) throw new Error('server down')
+      return { sha256: `hash-${file.name}`, url: `${serverUrl}/hash-${file.name}` }
+    })
+    const user = userEvent.setup()
+
+    render(<UploadStep pages={pages} coverFile={null} coverMode="file" onDone={onDone} onBack={vi.fn()} />)
+
+    expect(await screen.findByText(/failed to upload page/i)).toBeInTheDocument()
+    expect(screen.getByText('50%')).toBeInTheDocument()
+
+    failPageTwo = false
+    await user.click(screen.getByRole('button', { name: /retry/i }))
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('100%')).toBeInTheDocument()
+    expect(screen.getByText('Upload complete')).toBeInTheDocument()
   })
 })

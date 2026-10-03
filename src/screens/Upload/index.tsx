@@ -15,6 +15,7 @@ import { UploadStep, type UploadResult } from './UploadStep'
 import { PublishStep } from './PublishStep'
 import { DoneStep } from './DoneStep'
 import { parseChapterEvent, parseComicEvent } from '@/lib/comic'
+import { cn } from '@/lib/utils'
 
 type Step = 'metadata' | 'chapter' | 'upload' | 'publish' | 'done'
 
@@ -82,7 +83,7 @@ function UploadHeader({ title }: { title: string }) {
     <div className="mb-8 flex items-center gap-3">
       <BrandMark size="sm" showLabel={false} />
       <div>
-        <p className="text-[0.65rem] uppercase tracking-[0.45em] text-zinc-500">Mangatsu</p>
+        <p className="text-[0.65rem] uppercase tracking-[0.45em] text-muted-foreground">Mangatsu</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">{title}</h1>
       </div>
     </div>
@@ -241,37 +242,39 @@ export function UploadScreen() {
 
   if ((isEditComic && !existingComic) || (isEditChapter && !existingChapter)) {
     return (
-      <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-zinc-100">
+      <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-foreground">
         <div className="mx-auto w-full max-w-lg">
           <UploadHeader title={isEditComic ? 'Edit Comic Details' : 'Edit Chapter'} />
-          <p className="text-sm text-zinc-400">Loading details…</p>
+          <p role="status" className="text-sm text-muted-foreground">Loading details…</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-zinc-100">
+    <div className="min-h-screen bg-[linear-gradient(180deg,rgba(9,9,11,1),rgba(15,15,18,1)_50%,rgba(9,9,11,1))] px-4 pt-[calc(env(safe-area-inset-top)+1.5rem)] pb-[calc(env(safe-area-inset-bottom)+1.5rem)] text-foreground">
       <div className="mx-auto w-full max-w-lg">
         <UploadHeader
           title={isNewComic ? 'Upload Comic' : isEditComic ? 'Edit Comic Details' : isEditChapter ? 'Edit Chapter' : 'Add Chapter'}
         />
 
         {step !== 'done' && (
-          <div className="mb-8 flex gap-2">
+          <ol aria-label="Progress" className="mb-8 flex gap-2">
             {visibleSteps.filter((s) => s !== 'done').map((s, i) => (
-              <div
+              <li
                 key={s}
-                className={`flex-1 rounded-full py-1 text-center text-xs font-medium transition ${
-                  i <= visibleIndex
-                    ? 'bg-zinc-700 text-zinc-100'
-                    : 'bg-zinc-900 text-zinc-600'
-                }`}
+                aria-current={i === visibleIndex ? 'step' : undefined}
+                className={cn(
+                  'flex-1 rounded-full py-1 text-center text-xs font-medium transition-colors',
+                  i < visibleIndex && 'bg-secondary text-secondary-foreground',
+                  i === visibleIndex && 'bg-primary text-primary-foreground',
+                  i > visibleIndex && 'bg-muted/50 text-muted-foreground',
+                )}
               >
                 {STEP_LABELS[s]}
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
         )}
 
         {step === 'metadata' && (

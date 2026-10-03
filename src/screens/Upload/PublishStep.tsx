@@ -10,6 +10,18 @@ import type { MetadataFormValues } from './MetadataStep'
 import type { ChapterFormValues } from './ChapterStep'
 import { buildPublishDraft, publishDraft, type PublishDraft, type UploadArtifact } from './publishDraft'
 import type { ServerResult } from './UploadStep'
+import { AlertTriangle, Check } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+
+/** Hostname for display; server lists can come from relays, so don't trust them to parse. */
+function serverHost(url: string) {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
 
 interface PublishStepProps {
   isNewComic: boolean
@@ -165,35 +177,41 @@ export function PublishStep({
 
   return (
     <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-zinc-100">Step 4 — Publish</h2>
+      <h2 className="text-lg font-semibold">Publish</h2>
 
       {serverResults.length > 0 && (status === 'review' || status === 'publishing' || status === 'error') && (
         <>
-          <div className="overflow-hidden rounded-xl border border-zinc-800">
+          <div className="overflow-hidden rounded-xl border">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
+                <tr className="border-b text-left text-xs text-muted-foreground">
                   <th className="px-4 py-2 font-medium">Server</th>
-                  <th className="px-4 py-2 font-medium text-right">Files</th>
-                  <th className="px-4 py-2 font-medium text-right">Status</th>
+                  <th className="px-4 py-2 text-right font-medium">Files</th>
+                  <th className="px-4 py-2 text-right font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {serverResults.map((r) => {
                   const isPartial = r.uploaded < r.total
                   return (
-                    <tr key={r.url} className="border-b border-zinc-800/50 last:border-0">
-                      <td className="px-4 py-2 text-zinc-300 font-mono text-xs truncate max-w-[180px]">
-                        {new URL(r.url).hostname}
+                    <tr key={r.url} className="border-b border-border/50 last:border-0">
+                      <td className="max-w-[180px] truncate px-4 py-2 font-mono text-xs">
+                        {serverHost(r.url)}
                       </td>
-                      <td className="px-4 py-2 text-right text-zinc-400">
+                      <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
                         {r.uploaded}/{r.total}
                       </td>
                       <td className="px-4 py-2 text-right">
                         {isPartial ? (
-                          <span className="text-yellow-400">⚠ partial</span>
+                          <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-300">
+                            <AlertTriangle aria-hidden="true" />
+                            Partial
+                          </Badge>
                         ) : (
-                          <span className="text-green-400">✓</span>
+                          <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
+                            <Check aria-hidden="true" />
+                            Done
+                          </Badge>
                         )}
                       </td>
                     </tr>
@@ -205,17 +223,17 @@ export function PublishStep({
 
           {serverResults.some((r) => r.uploaded < r.total) && (
             <div className="space-y-3">
-              <p className="text-sm text-yellow-400">
+              <p className="text-sm text-amber-300">
                 Some servers accepted only part of the upload. Publish will record the servers that
                 actually stored each asset, so the event can still go out.
               </p>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-                <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Missing assets</p>
+              <div className="rounded-xl border bg-card/60 p-4">
+                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Missing assets</p>
                 <div className="mt-3 space-y-3">
                   {Object.entries(missingAssetsByServer).map(([server, labels]) => (
-                    <div key={server} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3">
-                      <p className="truncate text-sm font-medium text-zinc-200">{new URL(server).hostname}</p>
-                      <p className="mt-1 text-xs text-zinc-500">
+                    <div key={server} className="rounded-lg border bg-muted/30 p-3">
+                      <p className="truncate text-sm font-medium">{serverHost(server)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
                         Missing {labels.length} asset{labels.length === 1 ? '' : 's'}: {labels.join(', ')}
                       </p>
                     </div>
@@ -227,44 +245,40 @@ export function PublishStep({
         </>
       )}
       {serverResults.length === 0 && status === 'review' && (
-        <p className="text-sm text-zinc-400">No new Blossom uploads required.</p>
+        <p className="text-sm text-muted-foreground">No new Blossom uploads required.</p>
       )}
 
       {status === 'review' && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">WebTorrent Sharing</p>
+        <div className="rounded-xl border bg-card/40 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">WebTorrent Sharing</p>
           <div className="mt-2 flex items-center gap-2 text-sm">
             {magnetURI ? (
               <>
-                <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-zinc-200">Active — Seeding page torrents for P2P fallback</span>
+                <span className="flex size-2 animate-pulse rounded-full bg-emerald-500" />
+                <span>Active — Seeding page torrents for P2P fallback</span>
               </>
             ) : (
               <>
-                <span className="flex h-2 w-2 rounded-full bg-zinc-600" />
-                <span className="text-zinc-500">Inactive — Seeding disabled in global settings</span>
+                <span className="flex size-2 rounded-full bg-muted-foreground/50" />
+                <span className="text-muted-foreground">Inactive — Seeding disabled in global settings</span>
               </>
             )}
           </div>
         </div>
       )}
 
-      {status === 'review' && (
-        <button
-          type="button"
-          onClick={handlePublish}
-          className="w-full rounded-full bg-white px-5 py-3 text-sm font-medium text-zinc-950 hover:bg-zinc-200"
-        >
-          Publish
-        </button>
+      {(status === 'review' || status === 'error') && (
+        <Button type="button" size="lg" onClick={handlePublish} className="h-11 w-full rounded-full">
+          {status === 'error' ? 'Try again' : 'Publish'}
+        </Button>
       )}
 
       {status === 'publishing' && (
-        <p className="text-sm text-zinc-400">Signing and publishing events to relays...</p>
+        <p role="status" className="text-sm text-muted-foreground">Signing and publishing events to relays...</p>
       )}
 
       {status === 'error' && (
-        <p className="text-sm text-red-400">Error: {errorMsg}</p>
+        <p role="alert" className="text-sm text-destructive">Error: {errorMsg}</p>
       )}
     </div>
   )
