@@ -181,6 +181,34 @@ describe('LibraryScreen queued publishes', () => {
     )
   })
 
+  it('matches continue-reading to the exact comic, not one whose slug is a prefix', () => {
+    mockComics = {
+      comic: { ...mockComic, id: 'comic', dTag: 'comic', title: 'A Prefix Comic', eventId: 'comic' },
+      'comic-1': mockComic,
+    }
+    mockProgress = {
+      'comic-1/chapter-1': { id: 'p1', chapterDTag: 'comic-1/chapter-1', page: 2, updatedAt: 1700000000 },
+    }
+
+    render(<LibraryScreen />, { wrapper: Wrapper })
+
+    expect(screen.getByRole('heading', { name: 'Comic One' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'A Prefix Comic' })).not.toBeInTheDocument()
+  })
+
+  it('offers upload, refresh and settings from the mobile menu', async () => {
+    const user = userEvent.setup()
+    render(<LibraryScreen />, { wrapper: Wrapper })
+
+    await user.click(screen.getByRole('button', { name: /open menu/i }))
+
+    expect(screen.getByRole('menuitem', { name: /upload/i })).toHaveAttribute('href', '/upload')
+    expect(screen.getByRole('menuitem', { name: /settings/i })).toHaveAttribute('href', '/settings')
+    await user.click(screen.getByRole('menuitem', { name: /refresh/i }))
+    expect(mockRefreshSync).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+  })
+
   it('retries queued comics and clears them on success', async () => {
     usePublishQueueStore.getState().queueDraft({
       comicDTag: 'queued-comic',
