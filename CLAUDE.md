@@ -88,6 +88,8 @@ Each returns the resulting list; write it back to the store (`setAll`, `setServe
 
 The Reader saves progress to `readStore` and, 2 s after the page stops changing, publishes a kind 30301 event (`useProgressPublisher`). `NostrContext` subscribes to the user's 30301 events (`service.subscribeToReadingProgress`) and applies each through `readStore.mergeRemoteProgress`, which keeps whichever of local and remote is newer (`updatedAt` ms vs `created_at` × 1000), so this device's own echoes don't move it back. The Reader takes the saved page only when a chapter opens; synced updates never scroll an open chapter.
 
+Deleting a comic or chapter in ComicDetail adds NIP-09 `a` tags for the user's progress (`30301:<pubkey>:<chapter d>`, plus `k` 30301) to the kind 5 deletion request (`lib/progress.ts`). The progress subscription also fetches those deletions and drops progress saved at or before them, whichever arrives first, because some relays ignore NIP-09. The 5 row in the data model table covers these.
+
 ### Offline reading
 
 - "Make offline" (ComicDetail) caches the resolved HTTPS image URLs into the Cache API (`mangatsu-images-v1`) via `lib/offline.ts`; `areTargetsCached` reports status (no store involved).

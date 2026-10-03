@@ -21,6 +21,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { ZapButton } from '@/components/ZapButton'
 import { useComicStore } from '@/stores/comicStore'
 import { useReadStore } from '@/stores/readStore'
+import { progressDeleteTags } from '@/lib/progress'
 import { useBlossomStore } from '@/stores/blossomStore'
 import type { Chapter, Comic } from '@/types'
 import { BlossomImage } from '@/components/BlossomImage'
@@ -387,6 +388,12 @@ export function ComicDetailScreen() {
     removeComic(comic.dTag)
     void service.comicIndex?.removeComic(comic.pubkey, comic.dTag)
     removeChaptersForComic(comic.dTag)
+    const comicProgressChapters = [
+      ...chapters.map((chapter) => chapter.dTag),
+      ...Object.values(progress)
+        .filter((entry) => entry.chapterDTag.startsWith(`${comic.dTag}/`))
+        .map((entry) => entry.chapterDTag),
+    ]
     removeProgressForComic(comic.dTag)
     navigate('/')
 
@@ -403,7 +410,11 @@ export function ComicDetailScreen() {
       const template = {
         kind: 5 as const,
         content: `Deleted from Mangatsu: ${comic.title}`,
-        tags: comicDeleteTags(comic, chapters),
+        tags: [
+          ...comicDeleteTags(comic, chapters),
+          // Progress lives on relays too and would otherwise sync back to other devices.
+          ...(myPubkey ? progressDeleteTags(myPubkey, comicProgressChapters) : []),
+        ],
       }
       const signed = await service.eventFactory.build(template)
       if (signed) {
@@ -422,7 +433,10 @@ export function ComicDetailScreen() {
       const deleteEvent = await service.eventFactory.build({
         kind: 5,
         created_at: Math.floor(Date.now() / 1000),
-        tags: chapterDeleteTags(chapter),
+        tags: [
+          ...chapterDeleteTags(chapter),
+          ...(myPubkey ? progressDeleteTags(myPubkey, [chapter.dTag]) : []),
+        ],
         content: `Deleted chapter ${chapter.dTag} from Mangatsu`,
       })
       if (deleteEvent) {

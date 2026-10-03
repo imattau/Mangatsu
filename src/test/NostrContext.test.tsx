@@ -81,7 +81,10 @@ const mockService = {
   subscribeToReadingProgress: vi.fn(() => ({ unsubscribe: vi.fn() })) as MockedFunction<
     (
       pubkey: string,
-      onEvent: (event: { id: string; pubkey: string; kind: number; created_at: number; tags: string[][]; content: string; sig: string }) => void,
+      handlers: {
+        onProgress: (progress: { id: string; chapterDTag: string; page: number; updatedAt: number }) => void
+        onDeleted: (chapterDTag: string, untilMs: number) => void
+      },
     ) => { unsubscribe: () => void }
   >,
   subscribeToForeignComic: vi.fn(() => ({ unsubscribe: vi.fn() })) as MockedFunction<
@@ -262,53 +265,40 @@ describe('NostrProvider auth restore', () => {
     })
   })
 
-  it('applies reading progress from other devices unless local progress is newer', async () => {
-    let onProgress: Parameters<typeof mockService.subscribeToReadingProgress>[1] | undefined
-    mockService.subscribeToReadingProgress.mockImplementation((_pubkey, onEvent) => {
-      onProgress = onEvent
+  it('applies synced reading progress unless local progress is newer, and removes deleted progress', async () => {
+    let handlers: Parameters<typeof mockService.subscribeToReadingProgress>[1] | undefined
+    mockService.subscribeToReadingProgress.mockImplementation((_pubkey, h) => {
+      handlers = h
       return { unsubscribe: vi.fn() }
     })
     mocks.state.method = 'bunker'
     mocks.state.account = mockAccountData
     mockService.accountManager.active = { pubkey: 'pubkey' }
-    useReadStore.setState({
-      progress: {
-        'comic/chapter-2': { id: 'comic/chapter-2', chapterDTag: 'comic/chapter-2', page: 9, updatedAt: 500_000 },
-      },
-    })
-    const progressEvent = (dTag: string, page: string, createdAt: number) => ({
-      id: `${dTag}-${createdAt}`,
-      pubkey: 'pubkey',
-      kind: 30301,
-      created_at: createdAt,
-      tags: [
-        ['d', dTag],
-        ['page', page],
-      ],
-      content: '',
-      sig: '',
-    })
+    const entry = (chapterDTag: string, page: number, updatedAt: number) => ({ id: chapterDTag, chapterDTag, page, updatedAt })
+    useReadStore.setState({ progress: { 'comic/chapter-2': entry('comic/chapter-2', 9, 500_000) } })
 
     renderProvider()
     await waitFor(() => {
-      expect(mockService.subscribeToReadingProgress).toHaveBeenCalledWith('pubkey', expect.any(Function))
+      expect(mockService.subscribeToReadingProgress).toHaveBeenCalledWith('pubkey', expect.any(Object))
     })
 
     act(() => {
-      onProgress?.(progressEvent('comic/chapter-1', '4', 100)) // new chapter: applied
-      onProgress?.(progressEvent('comic/chapter-2', '3', 400)) // older than local: ignored
-      onProgress?.(progressEvent('comic/chapter-3', 'zero', 900)) // malformed: ignored
+      handlers?.onProgress(entry('comic/chapter-1', 4, 100_000)) // new chapter: applied
+      handlers?.onProgress(entry('comic/chapter-2', 3, 400_000)) // older than local: ignored
     })
-
     expect(useReadStore.getState().progress).toEqual({
-      'comic/chapter-1': { id: 'comic/chapter-1', chapterDTag: 'comic/chapter-1', page: 4, updatedAt: 100_000 },
-      'comic/chapter-2': { id: 'comic/chapter-2', chapterDTag: 'comic/chapter-2', page: 9, updatedAt: 500_000 },
+      'comic/chapter-1': entry('comic/chapter-1', 4, 100_000),
+      'comic/chapter-2': entry('comic/chapter-2', 9, 500_000),
     })
 
     act(() => {
-      onProgress?.(progressEvent('comic/chapter-2', '12', 600)) // newer than local: applied
+      handlers?.onProgress(entry('comic/chapter-2', 12, 600_000)) // newer than local: applied
+      handlers?.onDeleted('comic/chapter-1', 200_000) // deleted after it was saved: removed
+      handlers?.onDeleted('comic/chapter-2', 550_000) // saved again after the deletion: kept
     })
-    expect(useReadStore.getState().progress['comic/chapter-2']?.page).toBe(12)
+    expect(useReadStore.getState().progress).toEqual({
+      'comic/chapter-2': entry('comic/chapter-2', 12, 600_000),
+    })
     useReadStore.setState({ progress: {} })
   })
 

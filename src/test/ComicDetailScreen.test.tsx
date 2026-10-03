@@ -368,6 +368,9 @@ describe('ComicDetailScreen', () => {
             ['a', '30041:abc:one-piece/chapter-1'],
             ['a', '30041:abc:one-piece/chapter-2'],
             ['k', '30041'],
+            ['a', '30301:abc:one-piece/chapter-1'],
+            ['a', '30301:abc:one-piece/chapter-2'],
+            ['k', '30301'],
           ]),
         }),
       )
@@ -475,6 +478,8 @@ describe('ComicDetailScreen', () => {
           tags: expect.arrayContaining([
             ['a', '30041:abc:one-piece/chapter-1'],
             ['k', '30041'],
+            ['a', '30301:abc:one-piece/chapter-1'],
+            ['k', '30301'],
           ]),
         }),
       )

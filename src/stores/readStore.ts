@@ -7,6 +7,8 @@ interface ReadState {
   setProgress: (p: ReadingProgress) => void
   /** Apply progress from another device, unless this device has newer progress for that chapter. */
   mergeRemoteProgress: (p: ReadingProgress) => void
+  /** Drop a chapter's progress if it was saved at or before a deletion request (ms). */
+  removeDeletedProgress: (chapterDTag: string, untilMs: number) => void
   removeProgressForComic: (comicDTag: string) => void
   removeProgressForChapter: (chapterDTag: string) => void
 }
@@ -22,6 +24,14 @@ export const useReadStore = create<ReadState>()(
           const local = s.progress[p.id]
           if (local && local.updatedAt >= p.updatedAt) return s
           return { progress: { ...s.progress, [p.id]: p } }
+        }),
+      removeDeletedProgress: (chapterDTag, untilMs) =>
+        set((s) => {
+          const local = s.progress[chapterDTag]
+          if (!local || local.updatedAt > untilMs) return s
+          const progress = { ...s.progress }
+          delete progress[chapterDTag]
+          return { progress }
         }),
       removeProgressForComic: (comicDTag) =>
         set((s) => ({
