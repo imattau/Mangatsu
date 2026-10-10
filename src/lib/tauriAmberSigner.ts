@@ -158,7 +158,9 @@ export class TauriAmberAccount extends BaseAccount<TauriAmberSigner, void, unkno
   }
 
   static fromJSON(json: SerializedAccount<void, unknown>): TauriAmberAccount {
-    const account = new TauriAmberAccount(json.pubkey, new TauriAmberSigner())
+    const signer = new TauriAmberSigner()
+    signer.pubkey = json.pubkey
+    const account = new TauriAmberAccount(json.pubkey, signer)
     return BaseAccount.loadCommonFields(account, json)
   }
 }
