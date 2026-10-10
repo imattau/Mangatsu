@@ -267,12 +267,17 @@ export function NostrProvider({ children }: PropsWithChildren) {
           const account = isTauri()
             ? await (async () => {
                 const { TauriAmberSigner, TauriAmberAccount } = await import('@/lib/tauriAmberSigner')
-                return new TauriAmberAccount(pubkey, new TauriAmberSigner())
+                // A restored signer has not run getPublicKey(), so seed it or signEvent throws "Unknown signer pubkey".
+                const signer = new TauriAmberSigner()
+                signer.pubkey = pubkey
+                return new TauriAmberAccount(pubkey, signer)
               })()
             : await (async () => {
                 const { AmberClipboardAccount } = await import('applesauce-accounts/accounts')
                 const { AmberClipboardSigner } = await import('applesauce-signers')
-                return new AmberClipboardAccount(pubkey, new AmberClipboardSigner())
+                const signer = new AmberClipboardSigner()
+                signer.pubkey = pubkey
+                return new AmberClipboardAccount(pubkey, signer)
               })()
           const existing = service.accountManager.getAccountForPubkey(account.pubkey)
           if (existing) {
