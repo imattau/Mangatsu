@@ -307,10 +307,22 @@
           "markdownDescription": "Denies the open_amber_url command without any pre-configured scope."
         },
         {
-          "description": "Allows launching a NIP-55 signer app via a nostrsigner: URL.\n#### This default permission set includes:\n\n- `allow-open-amber-url`",
+          "description": "Enables the query_signer command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-query-signer",
+          "markdownDescription": "Enables the query_signer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the query_signer command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-query-signer",
+          "markdownDescription": "Denies the query_signer command without any pre-configured scope."
+        },
+        {
+          "description": "Allows launching a NIP-55 signer app via a nostrsigner: URL.\n#### This default permission set includes:\n\n- `allow-open-amber-url`\n- `allow-query-signer`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Allows launching a NIP-55 signer app via a nostrsigner: URL.\n#### This default permission set includes:\n\n- `allow-open-amber-url`"
+          "markdownDescription": "Allows launching a NIP-55 signer app via a nostrsigner: URL.\n#### This default permission set includes:\n\n- `allow-open-amber-url`\n- `allow-query-signer`"
         }
       ]
     }

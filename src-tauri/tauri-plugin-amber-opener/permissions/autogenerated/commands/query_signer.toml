@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-query-signer"
+description = "Enables the query_signer command without any pre-configured scope."
+commands.allow = ["query_signer"]
+
+[[permission]]
+identifier = "deny-query-signer"
+description = "Denies the query_signer command without any pre-configured scope."
+commands.deny = ["query_signer"]

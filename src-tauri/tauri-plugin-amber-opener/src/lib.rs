@@ -13,6 +13,22 @@ mod commands;
 mod error;
 
 pub use error::Error;
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignerQuery {
+    pub r#type: String,
+    pub payload: String,
+    pub pubkey: String,
+    pub current_user: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct SignerQueryResult {
+    pub status: String,
+    pub result: Option<String>,
+}
+
 type Result<T> = std::result::Result<T, Error>;
 
 pub struct AmberOpener<R: Runtime> {
@@ -36,6 +52,23 @@ impl<R: Runtime> AmberOpener<R> {
         #[cfg(not(target_os = "android"))]
         {
             let _ = url;
+            Err(Error::UnsupportedPlatform)
+        }
+    }
+
+    /// Asks the signer app for a result through its ContentResolver provider,
+    /// which works without bringing it to the foreground when the user has
+    /// remembered their approval. Status is "ok", "unavailable" or "rejected".
+    pub fn query_signer(&self, request: SignerQuery) -> Result<SignerQueryResult> {
+        #[cfg(target_os = "android")]
+        {
+            self.handle
+                .run_mobile_plugin("querySigner", request)
+                .map_err(Into::into)
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = request;
             Err(Error::UnsupportedPlatform)
         }
     }
@@ -65,6 +98,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![commands::open_amber_url])
+        .invoke_handler(tauri::generate_handler![commands::open_amber_url, commands::query_signer])
         .build()
 }

@@ -39,6 +39,13 @@ interface PendingRequest {
   reject: (reason: unknown) => void
 }
 
+type SilentType = 'SIGN_EVENT' | 'NIP04_ENCRYPT' | 'NIP04_DECRYPT' | 'NIP44_ENCRYPT' | 'NIP44_DECRYPT'
+
+interface SignerQueryResult {
+  status: 'ok' | 'unavailable' | 'rejected'
+  result?: string | null
+}
+
 export class TauriAmberSigner implements ISigner {
   pubkey?: string
   verifyEvent = verifyEvent
@@ -87,6 +94,26 @@ export class TauriAmberSigner implements ISigner {
     return result
   }
 
+  /**
+   * Tries the signer's ContentResolver provider first: with "remember my choice" granted
+   * in Amber it answers in the background, with no app switch or clipboard write. Returns
+   * null when it can't (not remembered, provider missing), so the caller uses the intent flow.
+   */
+  private async silent(type: SilentType, payload: string, otherPubkey = ''): Promise<string | null> {
+    if (!this.pubkey) return null
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      const response = await invoke<SignerQueryResult>('plugin:amber-opener|query_signer', {
+        request: { type, payload, pubkey: otherPubkey, currentUser: this.pubkey },
+      })
+      if (response.status === 'rejected') throw new Error('Request rejected by signer')
+      if (response.status === 'ok' && response.result) return response.result
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Request rejected by signer') throw error
+    }
+    return null
+  }
+
   async getPublicKey(): Promise<string> {
     if (this.pubkey) return this.pubkey
     const uri = buildNostrSignerUri(null, {
@@ -112,12 +139,33 @@ export class TauriAmberSigner implements ISigner {
     const pubkey = draft.pubkey || this.pubkey
     if (!pubkey) throw new Error('Unknown signer pubkey')
     const draftWithId = { ...draft, id: getEventHash({ ...draft, pubkey }) }
+    const quiet = await this.silent('SIGN_EVENT', JSON.stringify(draftWithId))
+    return this.finishSign(draftWithId, pubkey, quiet)
+  }
+
+  /**
+   * Signs only if Amber approves in the background (remembered choice); returns null instead of
+   * opening Amber, for unattended signing such as reading progress.
+   */
+  async signEventQuietly(draft: EventTemplate & { pubkey?: string }): Promise<NostrEvent | null> {
+    const pubkey = draft.pubkey || this.pubkey
+    if (!pubkey) return null
+    const draftWithId = { ...draft, id: getEventHash({ ...draft, pubkey }) }
+    const quiet = await this.silent('SIGN_EVENT', JSON.stringify(draftWithId))
+    return quiet ? this.finishSign(draftWithId, pubkey, quiet) : null
+  }
+
+  private async finishSign(
+    draftWithId: EventTemplate & { id: string },
+    pubkey: string,
+    quiet: string | null,
+  ): Promise<NostrEvent> {
     const uri = buildNostrSignerUri(JSON.stringify(draftWithId), {
       type: 'sign_event',
       compressionType: 'none',
       returnType: 'signature',
     })
-    const sig = await this.request(uri)
+    const sig = quiet ?? (await this.request(uri))
     if (!isHex(sig)) throw new Error('Expected hex signature')
     const event = { ...draftWithId, sig, pubkey }
     if (!verifyEvent(event)) throw new Error('Invalid signature')
@@ -125,25 +173,25 @@ export class TauriAmberSigner implements ISigner {
   }
 
   async nip04Encrypt(pubkey: string, plaintext: string): Promise<string> {
-    return this.request(
+    return (await this.silent('NIP04_ENCRYPT', plaintext, pubkey)) ?? this.request(
       buildNostrSignerUri(plaintext, { type: 'nip04_encrypt', pubKey: pubkey, compressionType: 'none', returnType: 'signature' }),
     )
   }
 
   async nip04Decrypt(pubkey: string, ciphertext: string): Promise<string> {
-    return this.request(
+    return (await this.silent('NIP04_DECRYPT', ciphertext, pubkey)) ?? this.request(
       buildNostrSignerUri(ciphertext, { type: 'nip04_decrypt', pubKey: pubkey, compressionType: 'none', returnType: 'signature' }),
     )
   }
 
   async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
-    return this.request(
+    return (await this.silent('NIP44_ENCRYPT', plaintext, pubkey)) ?? this.request(
       buildNostrSignerUri(plaintext, { type: 'nip44_encrypt', pubKey: pubkey, compressionType: 'none', returnType: 'signature' }),
     )
   }
 
   async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
-    return this.request(
+    return (await this.silent('NIP44_DECRYPT', ciphertext, pubkey)) ?? this.request(
       buildNostrSignerUri(ciphertext, { type: 'nip44_decrypt', pubKey: pubkey, compressionType: 'none', returnType: 'signature' }),
     )
   }
