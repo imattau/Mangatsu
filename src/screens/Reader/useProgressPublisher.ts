@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import type { NostrEvent } from 'applesauce-core/helpers/event'
 import { useNostr } from '@/context/NostrContext'
 
 const DEBOUNCE_MS = 2000
@@ -25,7 +26,13 @@ export function useProgressPublisher(chapterDTag: string, currentPage: number) {
           ],
           content: '',
         })
-        const signed = await account.signer.signEvent(template)
+        // Amber only signs unattended when the user remembered their approval; otherwise skip
+        // rather than switching apps on every page turn.
+        const signer = account.signer as { signEventQuietly?: (t: typeof template) => Promise<NostrEvent | null> }
+        const signed = signer.signEventQuietly
+          ? await signer.signEventQuietly(template)
+          : await account.signer.signEvent(template)
+        if (!signed) return
         // The user's relays (or the defaults until their relay list loads), like every
         // other event, so other devices reading from those relays can find it.
         await service.publishEvent(signed)

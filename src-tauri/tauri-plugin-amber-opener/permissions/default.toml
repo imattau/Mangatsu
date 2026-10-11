@@ -2,4 +2,4 @@
 
 [default]
 description = "Allows launching a NIP-55 signer app via a nostrsigner: URL."
-permissions = ["allow-open-amber-url"]
+permissions = ["allow-open-amber-url", "allow-query-signer"]
