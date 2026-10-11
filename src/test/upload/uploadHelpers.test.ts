@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { uploadFileToServers } from '@/screens/Upload/uploadHelpers'
+import { isRetryableUploadError, retryUpload, uploadFileToServers, uploadTimeoutMs } from '@/screens/Upload/uploadHelpers'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -41,5 +41,24 @@ describe('uploadFileToServers', () => {
       missingServers: [],
     })
     expect(setCachedHash).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('retryUpload', () => {
+  it('retries transient failures then succeeds', async () => {
+    const attempt = vi.fn().mockRejectedValueOnce(new Error('Server error')).mockResolvedValueOnce('ok')
+    await expect(retryUpload(attempt, 3, 0)).resolves.toBe('ok')
+    expect(attempt).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry client errors', async () => {
+    const attempt = vi.fn().mockRejectedValue(Object.assign(new Error('too big'), { status: 413 }))
+    await expect(retryUpload(attempt, 3, 0)).rejects.toThrow('too big')
+    expect(attempt).toHaveBeenCalledTimes(1)
+    expect(isRetryableUploadError(Object.assign(new Error('x'), { status: 503 }))).toBe(true)
+  })
+
+  it('scales the timeout with file size', () => {
+    expect(uploadTimeoutMs(10 * 1024 * 1024)).toBeGreaterThan(uploadTimeoutMs(1024))
   })
 })

@@ -5,7 +5,7 @@ import { useNostr } from '@/context/NostrContext'
 import { convertImageFileToWebp } from './webp'
 import { MAX_CHAPTER_PAGES } from './limits'
 import type { UploadArtifact } from './publishDraft'
-import { BLOSSOM_UPLOAD_TIMEOUT_MS, uploadFileToServers } from './uploadHelpers'
+import { retryUpload, uploadFileToServers, uploadTimeoutMs } from './uploadHelpers'
 import { webTorrentService } from '@/services/WebTorrentService'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -57,25 +57,6 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     return [...new Set(ordered.filter((server) => server.trim().length > 0))]
   }
 
-  async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-    let timer: number | undefined
-    try {
-      return await Promise.race([
-        promise,
-        new Promise<T>((_, reject) => {
-          timer = window.setTimeout(
-            () => reject(new Error(`Timed out ${label}`)),
-            timeoutMs,
-          )
-        }),
-      ])
-    } finally {
-      if (timer !== undefined) {
-        window.clearTimeout(timer)
-      }
-    }
-  }
-
   useEffect(() => {
     if (ranRef.current) return
     ranRef.current = true
@@ -90,11 +71,19 @@ export function UploadStep({ pages, coverFile, coverMode, onDone, onBack }: Uplo
     const upload = await uploadFileToServers(
       serverUrls,
       (serverUrl) =>
-        withTimeout(
-          blossomService.upload(file, serverUrl, account.signer as never),
-          BLOSSOM_UPLOAD_TIMEOUT_MS,
-          `uploading to ${serverUrl}`,
-        ),
+        retryUpload((attempt) => {
+          const timeout = uploadTimeoutMs(file.size)
+          const controller = new AbortController()
+          // Backstop in case a server stalls without the SDK's own timeout firing.
+          const timer = window.setTimeout(() => controller.abort(), timeout * 2 + 5000)
+          return blossomService
+            .upload(file, serverUrl, account.signer as never, { signal: controller.signal, timeout })
+            .catch((err) => {
+              console.warn(`Blossom upload to ${serverUrl} failed (attempt ${attempt}):`, err)
+              throw err
+            })
+            .finally(() => window.clearTimeout(timer))
+        }),
       setCachedHash,
     )
 

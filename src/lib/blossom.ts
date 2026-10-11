@@ -55,6 +55,7 @@ export async function probeBlossomAssetExists(url: string): Promise<boolean> {
       cache: 'no-store',
       mode: 'cors',
       headers: { Range: 'bytes=0-0' },
+      signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(8000) : undefined,
     })
     return response.ok
   } catch {

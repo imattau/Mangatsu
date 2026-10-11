@@ -13,6 +13,11 @@ vi.mock('../../services/BlossomService', () => ({
   },
 }))
 
+vi.mock('../../screens/Upload/uploadHelpers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../screens/Upload/uploadHelpers')>()
+  return { ...actual, retryUpload: <T,>(attempt: (n: number) => Promise<T>) => actual.retryUpload(attempt, 3, 0) }
+})
+
 vi.mock('../../screens/Upload/webp', () => ({
   convertImageFileToWebp: async (file: File) => ({
     file,
